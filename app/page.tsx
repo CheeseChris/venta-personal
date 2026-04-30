@@ -531,7 +531,6 @@ export default function Home() {
                   <span style={{ fontSize: '28px', flexShrink: 0 }}>📍</span>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Región Lima</p>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '12px', opacity: 0.75, fontFamily: 'DM Sans, sans-serif' }}>Callao · Chorrillos · La Molina · San Isidro</p>
                   </div>
                   <span style={{ opacity: 0.6, fontSize: '18px' }}>→</span>
                 </button>
@@ -540,7 +539,6 @@ export default function Home() {
                   <span style={{ fontSize: '28px', flexShrink: 0 }}>📍</span>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Región Norte</p>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '12px', opacity: 0.75, fontFamily: 'DM Sans, sans-serif' }}>Trujillo · Chiclayo · Piura y más</p>
                   </div>
                   <span style={{ opacity: 0.6, fontSize: '18px' }}>→</span>
                 </button>
@@ -832,12 +830,31 @@ export default function Home() {
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Lugar (Obligatorio)</label>
                   <select name="lugar" value={datosVenta.lugar} onChange={manejarCambioInput} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800">
-                    <option value="">Seleccione un lugar...</option>
-                    <option value="Sala de ventas Norte (Callao)">Sala de ventas Norte (Callao)</option>
-                    <option value="Sala de ventas Sur (Chorrillos)">Sala de ventas Sur (Chorrillos)</option>
-                    <option value="Sala de ventas Este (La Molina)">Sala de ventas Este (La Molina)</option>
-                    <option value="Cromo (San isidro)">Cromo (San isidro)</option>
-                  </select>
+  <option value="">Seleccione un lugar...</option>
+  {regionSeleccionada === 'Lima' && (
+    <>
+      <option value="Ag. Chincha">Ag. Chincha</option>
+      <option value="Ag. Ica">Ag. Ica</option>
+      <option value="Ag. Huacho">Ag. Huacho</option>
+      <option value="Ag. Huachipa">Ag. Huachipa</option>
+      <option value="Ag. Comas">Ag. Comas</option>
+      <option value="Ag. Ves">Ag. Ves</option>
+      <option value="Sala de ventas Norte (Callao)">Sala de ventas Norte (Callao)</option>
+      <option value="Sala de ventas Sur (Chorrillos)">Sala de ventas Sur (Chorrillos)</option>
+      <option value="Sala de ventas Este (La Molina)">Sala de ventas Este (La Molina)</option>
+      <option value="Cromo (San isidro)">Cromo (San isidro)</option>
+      
+    </>
+  )}
+  {regionSeleccionada === 'Norte' && (
+    <>
+      <option value="Ag. Trujillo">Ag. Trujillo</option>
+      <option value="Ag. Piura">Ag. Piura</option>
+      <option value="Ag. Talara">Ag. Talara</option>
+      <option value="Ag. Tumbes">Ag. Tumbes</option>
+    </>
+  )}
+</select>
                 </div>
 
                 <div>
@@ -863,7 +880,8 @@ export default function Home() {
                   <div className="flex flex-col gap-2 mt-3">
                     <div className="bg-white p-2 rounded-lg border border-slate-200">
                       <p className="text-[10px] text-slate-400 uppercase font-bold">BBVA Cta. Corriente en Soles</p>
-                      <p className="font-mono font-bold text-slate-700">001101840100045860</p>
+                      <p className="font-mono font-bold text-slate-700">CTA: 001101840100045860</p>
+                      <p className="font-mono font-bold text-slate-700">CCI: 01118400010004586092</p>
                       <p className="text-[10px] text-slate-500 mt-1">Cód. Recaudación: <span className="font-bold">8897</span></p>
                     </div>
                   </div>
