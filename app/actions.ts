@@ -7,10 +7,13 @@ import nodemailer from 'nodemailer';
 export interface ProductoStock {
   material_id: string;
   descripcion: string;
+  categoria?: string;      // <-- El "?" significa que es opcional internamente
   stock: number;
   precio_unitario: number;
-  marca: string | null;
-  region: string;
+  grupo?: string;          // <-- "?"
+  marca?: string;          // <-- "?"
+  region?: string;         // <-- "?"
+  agencia?: string;        // <-- "?"
 }
 
 export interface Vendedor {
@@ -23,27 +26,35 @@ export interface PedidoExistenteItem {
   material_id: string;
   descripcion: string;
   cantidad: number;
-  precio_total: number;
   precio_unitario: number;
-  agencia: string;
   estado: string;
   nombre_cliente: string;
+  agencia: string;
   comprobante_url: string;
-  stock_actual: number;
+  stock_actual: number; // <- Añade esta línea si no la tiene
 }
 
-export async function obtenerStockPorRegion(region: string): Promise<ProductoStock[]> {
+export async function obtenerAgenciasPorRegion(region: string): Promise<string[]> {
+  const { rows } = await sql<{ agencia: string }>`
+    SELECT DISTINCT agencia 
+    FROM stock_disponible 
+    WHERE region = ${region} AND agencia IS NOT NULL AND agencia != ''
+    ORDER BY agencia ASC;
+  `;
+  return rows.map(r => r.agencia);
+}
+
+export async function obtenerStockPorRegion(region: string, agencia: string): Promise<ProductoStock[]> {
   const { rows } = await sql<ProductoStock>`
     SELECT 
-      material_id, 
-      descripcion, stock, precio_unitario, marca, region 
+      material_id, descripcion, categoria, stock, 
+      precio_unitario, grupo, marca, region, agencia 
     FROM stock_disponible 
-    WHERE region = ${region}
+    WHERE region = ${region} AND agencia = ${agencia}
     ORDER BY descripcion ASC;
   `;
   return rows;
 }
-
 // NUEVA FUNCIÓN AÑADIDA: Obtiene todo el stock sin importar la región
 export async function obtenerTodoElStock(): Promise<ProductoStock[]> {
   try {
@@ -51,10 +62,13 @@ export async function obtenerTodoElStock(): Promise<ProductoStock[]> {
       SELECT 
         material_id, 
         descripcion, 
+        categoria, 
         stock, 
         precio_unitario, 
+        grupo, 
         marca, 
-        region 
+        region, 
+        agencia 
       FROM stock_disponible 
       ORDER BY region ASC, descripcion ASC;
     `;
@@ -446,8 +460,8 @@ export async function reemplazarStockMasivo(datos: ProductoStock[]) {
     // 2. Insertamos los nuevos
     for (const item of datos) {
       await sql`
-        INSERT INTO stock_disponible (material_id, descripcion, stock, precio_unitario, marca, region)
-        VALUES (${item.material_id}, ${item.descripcion}, ${item.stock}, ${item.precio_unitario}, ${item.marca}, ${item.region});
+        INSERT INTO stock_disponible (material_id, descripcion, categoria, stock, precio_unitario, grupo, marca, region, agencia)
+        VALUES (${item.material_id}, ${item.descripcion}, ${item.categoria}, ${item.stock}, ${item.precio_unitario}, ${item.grupo}, ${item.marca}, ${item.region}, ${item.agencia});
       `;
     }
     return { exito: true };
@@ -461,14 +475,17 @@ export async function agregarStockMasivo(datos: ProductoStock[]) {
   try {
     for (const item of datos) {
       await sql`
-        INSERT INTO stock_disponible (material_id, descripcion, stock, precio_unitario, marca, region)
-        VALUES (${item.material_id}, ${item.descripcion}, ${item.stock}, ${item.precio_unitario}, ${item.marca}, ${item.region})
+        INSERT INTO stock_disponible (material_id, descripcion, categoria, stock, precio_unitario, grupo, marca, region, agencia)
+        VALUES (${item.material_id}, ${item.descripcion}, ${item.categoria}, ${item.stock}, ${item.precio_unitario}, ${item.grupo}, ${item.marca}, ${item.region}, ${item.agencia})
         ON CONFLICT (material_id) DO UPDATE 
         SET stock = stock_disponible.stock + EXCLUDED.stock,
             precio_unitario = EXCLUDED.precio_unitario,
             descripcion = EXCLUDED.descripcion,
+            categoria = EXCLUDED.categoria,
+            grupo = EXCLUDED.grupo,
             marca = EXCLUDED.marca,
-            region = EXCLUDED.region;
+            region = EXCLUDED.region,
+            agencia = EXCLUDED.agencia;
       `;
     }
     return { exito: true };
@@ -546,5 +563,73 @@ export async function agregarPersonal(codigo_empleado: string, nombre_completo: 
   } catch (error) {
     console.error("🔥 Error agregando personal:", error);
     return { exito: false, error: error instanceof Error ? error.message : "Fallo al agregar personal" };
+  }
+}
+
+export async function verificarLimiteBebidas(
+  codigoEmpleado: string,
+  materialId: string,
+  cantidadSolicitada: number
+): Promise<{ permitido: boolean; mensaje?: string; cantidadDisponible: number }> {
+  try {
+    // Verificar si el producto es de categoría Bebidas
+    const { rows: productoRows } = await sql<any>`
+      SELECT categoria FROM stock_disponible 
+      WHERE material_id = ${materialId} 
+      LIMIT 1;
+    `;
+
+    if (productoRows.length === 0 || productoRows[0].categoria !== 'Bebidas') {
+      return { permitido: true, cantidadDisponible: 4 };
+    }
+
+    // Buscar pedidos de ese SKU por ese empleado en los últimos 28 días
+    const { rows: pedidosRows } = await sql<any>`
+      SELECT 
+        rp.cantidad,
+        rp.fecha
+      FROM registro_pedidos rp
+      WHERE rp.codigo_empleado = ${codigoEmpleado}
+        AND rp.material_id = ${materialId}
+        AND rp.estado != 'RECHAZADO'
+        AND rp.fecha >= (CURRENT_DATE - INTERVAL '28 days')
+      ORDER BY rp.fecha DESC;
+    `;
+
+    const totalPedidoEnVentana = pedidosRows.reduce(
+      (suma: number, row: any) => suma + Number(row.cantidad), 0
+    );
+
+    const cantidadDisponible = Math.max(0, 4 - totalPedidoEnVentana);
+
+    if (totalPedidoEnVentana >= 4) {
+      // Calcular cuándo podrá pedir de nuevo (28 días desde el pedido más antiguo en la ventana)
+      const fechaMasAntigua = new Date(pedidosRows[pedidosRows.length - 1].fecha);
+      const fechaProximoPedido = new Date(fechaMasAntigua);
+      fechaProximoPedido.setDate(fechaProximoPedido.getDate() + 28);
+      const fechaFormateada = fechaProximoPedido.toLocaleDateString('es-PE', {
+        day: '2-digit', month: 'long', year: 'numeric'
+      });
+
+      return {
+        permitido: false,
+        cantidadDisponible: 0,
+        mensaje: `Ya realizaste un pedido de 4 unidades de este producto en los últimos 28 días. Podrás volver a pedirlo a partir del ${fechaFormateada}.`
+      };
+    }
+
+    if (totalPedidoEnVentana + cantidadSolicitada > 4) {
+      return {
+        permitido: false,
+        cantidadDisponible,
+        mensaje: `Solo puedes pedir ${cantidadDisponible} unidade${cantidadDisponible !== 1 ? 's' : ''} más de este producto. El límite es 4 unidades cada 28 días para productos de Bebidas.`
+      };
+    }
+
+    return { permitido: true, cantidadDisponible };
+
+  } catch (error) {
+    console.error("🔥 Error verificando límite de bebidas:", error);
+    return { permitido: true, cantidadDisponible: 4 };
   }
 }

@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { obtenerStockPorRegion, ProductoStock, registrarPedido, obtenerVendedores, Vendedor, enviarCorreoConfirmacion, obtenerPedidoPorId, PedidoExistenteItem, actualizarPedido } from './actions';
+import { useState, useEffect, useRef } from 'react';
+import { obtenerStockPorRegion, ProductoStock, registrarPedido, obtenerVendedores, 
+  Vendedor, enviarCorreoConfirmacion, obtenerPedidoPorId, PedidoExistenteItem, 
+  actualizarPedido, obtenerAgenciasPorRegion, verificarLimiteBebidas } from './actions';
 
 interface ItemCarrito {
   material_id: string;
@@ -14,6 +16,7 @@ export default function Home() {
   const [regionSeleccionada, setRegionSeleccionada] = useState<string | null>(null);
   const [stockReal, setStockReal] = useState<ProductoStock[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [agenciaActual, setAgenciaActual] = useState<string>('');
 
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
@@ -21,7 +24,9 @@ export default function Home() {
 
   const [comprobante, setComprobante] = useState<File | null>(null);
   const [guardando, setGuardando] = useState(false);
-
+  const [alerta, setAlerta] = useState<{ titulo: string; mensaje: string; tipo: 'error' | 'exito' | 'advertencia' } | null>(null);
+  const mostrarAlerta = (titulo: string, mensaje: string, tipo: 'error' | 'exito' | 'advertencia' = 'error') => {
+  setAlerta({ titulo, mensaje, tipo });};
   const [vendedoresBD, setVendedoresBD] = useState<Vendedor[]>([]);
   const [busquedaVendedor, setBusquedaVendedor] = useState('');
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
@@ -34,6 +39,9 @@ export default function Home() {
   });
 
   const [modalRegion, setModalRegion] = useState(false);
+  const [modalAgencia, setModalAgencia] = useState(false);
+  const [regionPendiente, setRegionPendiente] = useState<string | null>(null);
+  const [agenciasPorRegion, setAgenciasPorRegion] = useState<string[]>([]);
   const [modalModificar, setModalModificar] = useState(false);
 
   const [busquedaProducto, setBusquedaProducto] = useState('');
@@ -46,9 +54,28 @@ export default function Home() {
   const [cantidadesModificadasMap, setCantidadesModificadasMap] = useState<Record<string, number>>({});
   const [lugarModificado, setLugarModificado] = useState('');
   const [comprobanteModificado, setComprobanteModificado] = useState<File | null>(null);
+  // Auto-refresh del stock cada 45 segundos
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const cargarDatos = async (region: string) => {
+  useEffect(() => {
+    if (regionSeleccionada && agenciaActual && pantalla === 'catalogo') {
+      intervalRef.current = setInterval(async () => {
+        try {
+          const datosStock = await obtenerStockPorRegion(regionSeleccionada, agenciaActual);
+          setStockReal(datosStock);
+        } catch (e) {
+          console.error("Error refrescando stock", e);
+        }
+      }, 45000); // cada 45 segundos
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [regionSeleccionada, agenciaActual, pantalla]);
+
+  const cargarDatos = async (region: string, agencia: string) => {
     setRegionSeleccionada(region);
+    setAgenciaActual(agencia);
     setCargando(true);
     setCarrito([]);
     setMostrarCarrito(false);
@@ -62,7 +89,7 @@ export default function Home() {
 
     try {
       const [datosStock, datosVendedores] = await Promise.all([
-        obtenerStockPorRegion(region),
+        obtenerStockPorRegion(region, agencia),
         obtenerVendedores()
       ]);
       setStockReal(datosStock);
@@ -73,7 +100,13 @@ export default function Home() {
       setCargando(false);
     }
   };
-
+  const seleccionarRegion = async (region: string) => {
+  setModalRegion(false);
+  setRegionPendiente(region);
+  const agencias = await obtenerAgenciasPorRegion(region);
+  setAgenciasPorRegion(agencias);
+  setModalAgencia(true);
+};
   const actualizarCantidad = (producto: ProductoStock, cambio: number) => {
     setCarrito((carritoActual) => {
       const itemExistente = carritoActual.find(item => item.material_id === producto.material_id);
@@ -82,7 +115,7 @@ export default function Home() {
         const nuevaCantidad = itemExistente.cantidad + cambio;
 
         if (nuevaCantidad > producto.stock) {
-          alert(`⚠️ ALERTA DE INVENTARIO: No hay suficiente stock. Solo quedan ${producto.stock} unidades disponibles en el almacén.`);
+          setTimeout(() => mostrarAlerta("Stock insuficiente", `Solo quedan ${producto.stock} unidades disponibles en el almacén para este producto.`, "advertencia"), 0);
           return carritoActual;
         }
 
@@ -104,24 +137,28 @@ export default function Home() {
 
   const procesarPedido = async () => {
     if (!datosVenta.nombre || !datosVenta.codigoEmpleado) {
-      alert("⚠️ Error: Debes buscar y SELECCIONAR tu nombre de la lista desplegable.");
+      mostrarAlerta("Nombre requerido", "Debes buscar y SELECCIONAR tu nombre de la lista desplegable.", "advertencia"); return;
+      return;
+    }
+    if (!datosVenta.nombre || !datosVenta.codigoEmpleado) {
+      mostrarAlerta("Nombre requerido", "Debes buscar y SELECCIONAR tu nombre de la lista desplegable.", "advertencia");
       return;
     }
     if (!datosVenta.lugar) {
-      alert("⚠️ Error: Debes seleccionar un Lugar de la lista.");
+      mostrarAlerta("Lugar requerido", "Debes seleccionar un lugar de entrega de la lista.", "advertencia");
       return;
     }
     if (!datosVenta.correo) {
-      alert("⚠️ Error: Debes ingresar tu correo electrónico.");
+      mostrarAlerta("Correo requerido", "Debes ingresar tu correo electrónico para recibir la confirmación.", "advertencia");
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(datosVenta.correo)) {
-      alert("⚠️ Error: El formato del correo electrónico no es válido.");
+      mostrarAlerta("Correo inválido", "El formato del correo no es válido. Ej: usuario@empresa.com", "advertencia");
       return;
     }
     if (!comprobante) {
-      alert("⚠️ Error: Debes subir el comprobante de pago (Yape/Transferencia).");
+      mostrarAlerta("Comprobante requerido", "Debes subir el comprobante de pago (Yape o transferencia) para continuar.", "advertencia");
       return;
     }
 
@@ -129,6 +166,23 @@ export default function Home() {
     const ordenBaseId = `PED-${Math.floor(Math.random() * 1000000)}`;
 
     try {
+      // ✅ VERIFICAR LÍMITE DE BEBIDAS ANTES DE REGISTRAR
+      for (const item of carrito) {
+        const productoEnStock = stockReal.find(p => p.material_id === item.material_id);
+        if (productoEnStock?.categoria === 'Bebidas') {
+          const verificacion = await verificarLimiteBebidas(
+            datosVenta.codigoEmpleado,
+            item.material_id,
+            item.cantidad
+          );
+          if (!verificacion.permitido) {
+            mostrarAlerta("Límite de Bebidas 🥤", `${item.descripcion}\n\n${verificacion.mensaje}`, "advertencia");
+            setGuardando(false);
+            return;
+          }
+        }
+      }
+
       let comprobanteUrl = 'Sin comprobante';
 
       if (comprobante) {
@@ -176,7 +230,7 @@ export default function Home() {
         await enviarCorreoConfirmacion({
           nombre: datosVenta.nombre,
           correoDestino: datosVenta.correo,
-          bcc: ["vpizarro@cbc.co", "emendivil@cbc.co"], 
+          bcc: ["vpizarro@cbc.co", "emendivil@cbc.co","harryalca1@gmail.com"], 
           pedidoId: ordenBaseId,
           lugar: datosVenta.lugar,
           total: totalPagar,
@@ -185,7 +239,8 @@ export default function Home() {
         });
       }
 
-      alert(`✅ ¡Pedido ${ordenBaseId} registrado con éxito!`);
+      mostrarAlerta("¡Pedido Registrado! 🎉", `Tu pedido ${ordenBaseId} fue registrado con éxito. Recibirás un correo de confirmación.`, "exito");
+
       setCarrito([]);
       setDatosVenta({ nombre: '', lugar: '', correo: '', codigoEmpleado: '' });
       setBusquedaVendedor('');
@@ -194,7 +249,8 @@ export default function Home() {
 
     } catch (error) {
       console.error(error);
-      alert("❌ Hubo un error al guardar el pedido. Revisa tu conexión.");
+      mostrarAlerta("Error al guardar", "Hubo un error al guardar el pedido. Revisa tu conexión e intenta nuevamente.", "error");
+
     } finally {
       setGuardando(false);
     }
@@ -202,7 +258,7 @@ export default function Home() {
 
   const buscarPedidoParaModificar = async () => {
     if (!idPedidoModificar) {
-      alert("Ingresa un ID de pedido válido.");
+      mostrarAlerta("ID requerido", "Ingresa un ID de pedido válido. Ej: PED-123456", "advertencia");
       return;
     }
     setBuscandoPedido(true);
@@ -214,7 +270,8 @@ export default function Home() {
     try {
       const itemsPedido = await obtenerPedidoPorId(idPedidoModificar);
       if (!itemsPedido || itemsPedido.length === 0) {
-        alert("❌ No se encontró ningún pedido con ese ID.");
+        mostrarAlerta("Pedido no encontrado", "No se encontró ningún pedido con ese ID. Verifica el número e intenta nuevamente.", "error");
+
         return;
       }
 
@@ -232,7 +289,7 @@ export default function Home() {
 
     } catch (error) {
       console.error(error);
-      alert("❌ Error buscando el pedido. Revisa tu conexión.");
+      mostrarAlerta("Error de conexión", "Error buscando el pedido. Revisa tu conexión e intenta nuevamente.", "error");
     } finally {
       setBuscandoPedido(false);
     }
@@ -251,7 +308,7 @@ export default function Home() {
       const maximoPermitido = Number(itemOriginal.stock_actual) + Number(itemOriginal.cantidad);
 
       if (nuevaCantidad > maximoPermitido) {
-        alert(`⚠️ LÍMITE ALCANZADO: Solo hay ${itemOriginal.stock_actual} unidades extras disponibles en almacén. No puedes llevar más de ${maximoPermitido} en total.`);
+        setTimeout(() => mostrarAlerta("Límite alcanzado", `Solo hay ${itemOriginal.stock_actual} unidades extras disponibles. El máximo que puedes llevar es ${maximoPermitido} en total.`, "advertencia"), 0);
         return prev;
       }
 
@@ -264,7 +321,7 @@ export default function Home() {
 
   const guardarCambiosPedido = async () => {
     if (!lugarModificado) {
-      alert("⚠️ Error: Debes seleccionar un Lugar de la lista.");
+      mostrarAlerta("Lugar requerido", "Debes seleccionar un lugar de entrega de la lista.", "advertencia");
       return;
     }
     if (itemsPedidoOriginal.length === 0) return;
@@ -306,7 +363,7 @@ export default function Home() {
 
       if (!respuesta.exito) throw new Error(respuesta.error);
 
-      alert(`✅ ¡Inventario reajustado! Pedido ${idPedidoModificar} actualizado con éxito.`);
+      mostrarAlerta("¡Pedido Actualizado! ✅", `El pedido ${idPedidoModificar} fue actualizado y el inventario reajustado correctamente.`, "exito");
 
       setIdPedidoModificar('');
       setItemsPedidoOriginal([]);
@@ -316,7 +373,8 @@ export default function Home() {
 
     } catch (error) {
       console.error(error);
-      alert("❌ Hubo un error al guardar los cambios en la base de datos.");
+      mostrarAlerta("Error al actualizar", "Hubo un error al guardar los cambios en la base de datos. Intenta nuevamente.", "error");
+
     } finally {
       setGuardando(false);
     }
@@ -324,10 +382,17 @@ export default function Home() {
 
   const totalPagar = carrito.reduce((suma, item) => suma + (item.cantidad * item.precio_unitario), 0);
 
-  const merchCodes = ['BA013362', 'BA001666', 'BA001667', 'BA016514', 'BA001554', 'BA024155', 'AA900980', 'BA001553', 'BA024154', 'BA016513', 'BA006745', 'BA014478', 'BA014477', 'BA015701', 'BA007718'];
-  const bebidasBrands = ['Concordia', 'Cubata', 'Evervess', 'Frutaris', 'Gatorade', 'H2OH', 'Lipton', 'Mountain', 'Pepsi', 'Red Bull', 'San Carlos', 'Seven UP', 'Smirnoff', 'Triple Kola', '220V'];
-  const nuevosNegociosBrands = ['Nuna Terra', 'La Bodeguita', 'Eterna', 'KIMBERLY CLARK', 'SOFTYS', 'KENVUE', 'HENKEL', 'Crecer Kids', 'More'];
-  const campariBrands = ['Sky', 'Appleton', 'Cinzano', 'Riccadonna', 'Aperol', 'Wild Turkey', 'Frangelico', 'Bulldog', 'Grand Marnier', 'Espolon'];
+  // DICCIONARIOS DE EMOJIS DINÁMICOS
+  const categoryIcons: Record<string, string> = {
+    'Bebidas': '🥤',
+    'Campari': '🥃',
+    'Diageo': '🍷',
+    'La Bodeguita': '🏪',
+    'Nuevos Negocios': '🏢',
+    'Merch': '👕',
+    'Nuna Terra': '🌱',
+    'Otros': '📦'
+  };
 
   const brandIcons: Record<string, string> = {
     'Nuna Terra': '🌱', 'La Bodeguita': '🏪', 'Eterna': '🧼', 'KIMBERLY CLARK': '🧻', 'SOFTYS': '☁️',
@@ -336,34 +401,21 @@ export default function Home() {
     'Pepsi': '🔵', 'Red Bull': '🐂', 'San Carlos': '💧', 'Seven UP': '🍋🟩', 'Smirnoff': '🍸',
     'Triple Kola': '🟡', '220V': '🔋', 'Sky': '🌌', 'Appleton': '🍎', 'Cinzano': '🍷',
     'Riccadonna': '🍾', 'Aperol': '🍊', 'Wild Turkey': '🦃', 'Frangelico': '🌰', 'Bulldog': '🐶',
-    'Grand Marnier': '🍊', 'Espolon': '🌵', 'Merch': '👕', 'Crecer Kids': '🧸', 'More': '🍬'
+    'Grand Marnier': '🍊', 'Espolon': '🌵', 'Merch': '👕', 'Crecer Kids': '🧸', 'More': '🍬',
+    'Pepsico': '🔵'
   };
 
-  const getMainCategory = (p: ProductoStock) => {
-    if (merchCodes.includes(p.material_id)) return 'Merch';
-    if (p.marca && bebidasBrands.includes(p.marca)) return 'Bebidas';
-    if (p.marca && nuevosNegociosBrands.includes(p.marca)) return 'Nuevos Negocios';
-    if (p.marca && campariBrands.includes(p.marca)) return 'Campari';
-    return 'Otros';
-  };
+  // Extraemos todos los grupos únicos disponibles en la base de datos
+  const activeMainCategories = Array.from(new Set(stockReal.map(p => p.grupo || 'Otros'))).filter(Boolean);
 
-  // Find which main categories actually have stock
-  const allEnrichedProducts = stockReal.map(p => {
-    return {
-      ...p,
-      mainCategory: getMainCategory(p),
-      marcaAgrupada: merchCodes.includes(p.material_id) ? 'Merch' : (p.marca || 'Otros')
-    };
-  });
-
-  const activeMainCategories = ['Bebidas', 'Nuevos Negocios', 'Campari', 'Merch', 'Otros'].filter(
-    cat => allEnrichedProducts.some(p => p.mainCategory === cat)
-  );
-
-  const productosFiltrados = allEnrichedProducts.filter(p => {
+  const productosFiltrados = stockReal.filter(p => {
+    const mainCategory = p.grupo || 'Otros';
+    const marcaAgrupada = p.marca || 'Otros';
+    
     const coincideBusqueda = p.descripcion.toLowerCase().includes(busquedaProducto.toLowerCase()) || p.material_id.toLowerCase().includes(busquedaProducto.toLowerCase());
-    const coincideCategoria = categoriaFiltro === 'Todos' || p.mainCategory === categoriaFiltro;
-    const coincideMarca = marcaFiltro === 'Todas' || p.marcaAgrupada === marcaFiltro;
+    const coincideCategoria = categoriaFiltro === 'Todos' || mainCategory === categoriaFiltro;
+    const coincideMarca = marcaFiltro === 'Todas' || marcaAgrupada === marcaFiltro;
+    
     return coincideBusqueda && coincideCategoria && coincideMarca;
   });
 
@@ -435,8 +487,6 @@ export default function Home() {
             </div>
           </div>
 
-
-
           <div className="hero-btns" style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => setModalRegion(true)} className="glow-btn" style={{ background: '#ffffff', color: '#0f172a', border: 'none', borderRadius: '12px', padding: '18px 36px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 800, transition: 'all 0.2s', boxShadow: '0 10px 25px rgba(255,255,255,0.1)' }}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
@@ -477,7 +527,7 @@ export default function Home() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <button onClick={() => { setModalRegion(false); cargarDatos('Lima'); }} className="modal-btn" style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', border: 'none', borderRadius: '16px', padding: '20px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%' }}>
+                <button onClick={() => seleccionarRegion('Lima')} className="modal-btn" style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', border: 'none', borderRadius: '16px', padding: '20px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%' }}>
                   <span style={{ fontSize: '28px', flexShrink: 0 }}>📍</span>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Región Lima</p>
@@ -486,7 +536,7 @@ export default function Home() {
                   <span style={{ opacity: 0.6, fontSize: '18px' }}>→</span>
                 </button>
 
-                <button onClick={() => { setModalRegion(false); cargarDatos('Norte'); }} className="modal-btn" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '20px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%' }}>
+                <button onClick={() => seleccionarRegion('Norte')} className="modal-btn" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '20px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%' }}>
                   <span style={{ fontSize: '28px', flexShrink: 0 }}>📍</span>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Región Norte</p>
@@ -530,7 +580,55 @@ export default function Home() {
             </div>
           </div>
         )}
+      {modalAgencia && (
+          <div
+            onClick={(e) => { if (e.target === e.currentTarget) setModalAgencia(false); }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease forwards' }}
+          >
+            <div style={{ background: 'linear-gradient(135deg, #0d1b3e, #0a1628)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '24px', padding: '40px', width: '100%', maxWidth: '440px', boxShadow: '0 0 80px rgba(6,182,212,0.15)' }}>
 
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#67e8f9', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: 'DM Sans, sans-serif' }}>Región {regionPendiente}</p>
+                  <h2 style={{ margin: '6px 0 0 0', fontSize: '24px', fontWeight: 800, color: '#ffffff', fontFamily: 'Syne, sans-serif' }}>¿A qué agencia perteneces?</h2>
+                </div>
+                <button
+                  onClick={() => setModalAgencia(false)}
+                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '50%', width: '36px', height: '36px', color: '#ffffff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >✕</button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {agenciasPorRegion.length === 0 ? (
+                  <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontFamily: 'DM Sans, sans-serif' }}>
+                    Cargando agencias...
+                  </p>
+                ) : (
+                  agenciasPorRegion.map((agencia, index) => (
+                    <button
+                      key={agencia}
+                      onClick={() => { setModalAgencia(false); cargarDatos(regionPendiente!, agencia); }}
+                      className="modal-btn"
+                      style={{
+                        background: index === 0 ? 'linear-gradient(135deg, #06b6d4, #0891b2)' : 'rgba(255,255,255,0.06)',
+                        border: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: '16px', padding: '20px 24px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '16px',
+                        fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%'
+                      }}
+                    >
+                      <span style={{ fontSize: '28px', flexShrink: 0 }}>🏢</span>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{agencia}</p>
+                      </div>
+                      <span style={{ opacity: 0.6, fontSize: '18px' }}>→</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     );
   }
@@ -614,7 +712,7 @@ export default function Home() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', padding: '4px' }}>
                             <button onClick={() => actualizarCantidadPedidoExistente(item.material_id, -1)} className="quantity-btn" disabled={cantidadModificada <= 1}>-</button>
                             <span style={{ width: '40px', textAlign: 'center', fontSize: '18px', fontWeight: 800, color: '#fff', fontFamily: 'Syne, sans-serif' }}>{cantidadModificada}</span>
-                            {/* El botón "+" se bloquea si se llega al límite */}
+                            {/* El botão "+" se bloquea si se llega al límite */}
                             <button onClick={() => actualizarCantidadPedidoExistente(item.material_id, 1)} className="quantity-btn" disabled={cantidadModificada >= maximoPermitido}>+</button>
                           </div>
                           {/* Texto del Límite de Stock */}
@@ -665,6 +763,7 @@ export default function Home() {
             </div>
           </div>
         </div>
+        <ModalAlerta alerta={alerta} onClose={() => setAlerta(null)} />
       </main>
     );
   }
@@ -774,6 +873,7 @@ export default function Home() {
             </div>
           </div>
         </div>
+        <ModalAlerta alerta={alerta} onClose={() => setAlerta(null)} />
       </main>
     );
   }
@@ -808,7 +908,7 @@ export default function Home() {
             </button>
             {activeMainCategories.map(cat => (
               <button key={cat} onClick={() => { setCategoriaFiltro(cat); setMarcaFiltro('Todas'); }} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 700, transition: 'all 0.2s', background: categoriaFiltro === cat ? '#0f172a' : '#f1f5f9', color: categoriaFiltro === cat ? '#ffffff' : '#64748b', boxShadow: categoriaFiltro === cat ? '0 2px 8px rgba(0,0,0,0.15)' : 'none' }}>
-                {cat === 'Bebidas' ? '🥤 ' : cat === 'Nuevos Negocios' ? '🏢 ' : cat === 'Campari' ? '🥃 ' : cat === 'Merch' ? '👕 ' : '📦 '}{cat}
+                {categoryIcons[cat] || '📦'} {cat}
               </button>
             ))}
           </div>
@@ -821,7 +921,7 @@ export default function Home() {
                 style={{ padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', background: '#f8fafc', fontWeight: 600, color: '#475569', minWidth: '150px' }}
               >
                 <option value="Todas">Todas las marcas</option>
-                {Array.from(new Set(allEnrichedProducts.filter(p => p.mainCategory === categoriaFiltro).map(p => p.marcaAgrupada))).sort().map(m => (
+                {Array.from(new Set(stockReal.filter(p => (p.grupo || 'Otros') === categoriaFiltro).map(p => p.marca || 'Otros'))).sort().map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
@@ -847,13 +947,12 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         {activeMainCategories.filter(cat => categoriaFiltro === 'Todos' || categoriaFiltro === cat).map(mainCat => {
-          // @ts-ignore
-          const prodsMain = productosFiltrados.filter(p => p.mainCategory === mainCat);
+          const prodsMain = productosFiltrados.filter(p => (p.grupo || 'Otros') === mainCat);
           if (prodsMain.length === 0) return null;
 
-          const marcasDeMainCat = Array.from(new Set(prodsMain.map((p: any) => p.marcaAgrupada))).sort((a: any, b: any) => {
-            const countA = prodsMain.filter((p: any) => p.marcaAgrupada === a).length;
-            const countB = prodsMain.filter((p: any) => p.marcaAgrupada === b).length;
+          const marcasDeMainCat = Array.from(new Set(prodsMain.map((p) => p.marca || 'Otros'))).sort((a, b) => {
+            const countA = prodsMain.filter((p) => (p.marca || 'Otros') === a).length;
+            const countB = prodsMain.filter((p) => (p.marca || 'Otros') === b).length;
             return countB - countA;
           });
 
@@ -861,13 +960,13 @@ export default function Home() {
             <div key={mainCat} className="mb-14">
               <h1 className="text-3xl font-black text-slate-800 mb-8 border-b-2 border-slate-200 pb-4 uppercase tracking-widest flex items-center gap-3">
                 <span className="bg-slate-800 text-white p-2 rounded-xl text-xl shadow-md">
-                  {mainCat === 'Bebidas' ? '🥤' : mainCat === 'Nuevos Negocios' ? '🏢' : mainCat === 'Campari' ? '🥃' : mainCat === 'Merch' ? '👕' : '📦'}
+                  {categoryIcons[mainCat] || '📦'}
                 </span>
                 {mainCat}
               </h1>
 
-              {marcasDeMainCat.map((marca: any) => {
-                const prodsMarca = prodsMain.filter((p: any) => p.marcaAgrupada === marca);
+              {marcasDeMainCat.map((marca) => {
+                const prodsMarca = prodsMain.filter((p) => (p.marca || 'Otros') === marca);
                 const icon = brandIcons[marca] || '📦';
                 return (
                   <div key={marca} className="mb-10 pl-6 border-l-4 border-blue-200">
@@ -875,7 +974,7 @@ export default function Home() {
                       <span className="text-2xl drop-shadow-sm">{icon}</span> {marca}
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                      {prodsMarca.map((prod: any) => <TarjetaProducto key={prod.material_id} producto={prod} carrito={carrito} onActualizar={actualizarCantidad} />)}
+                      {prodsMarca.map((prod) => <TarjetaProducto key={prod.material_id} producto={prod} carrito={carrito} onActualizar={actualizarCantidad} />)}
                     </div>
                   </div>
                 );
@@ -936,10 +1035,79 @@ export default function Home() {
           </div>
         </div>
       )}
+      {alerta && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease' }}>
+          <div style={{ background: '#ffffff', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '420px', boxShadow: '0 25px 60px rgba(0,0,0,0.2)', textAlign: 'center' }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px',
+              background: alerta.tipo === 'exito' ? '#dcfce7' : alerta.tipo === 'advertencia' ? '#fef9c3' : '#fee2e2'
+            }}>
+              {alerta.tipo === 'exito' ? '✅' : alerta.tipo === 'advertencia' ? '⚠️' : '❌'}
+            </div>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: 800, color: '#0f172a', fontFamily: 'Syne, sans-serif' }}>
+              {alerta.titulo}
+            </h3>
+            <p style={{ margin: '0 0 28px 0', fontSize: '14px', color: '#64748b', lineHeight: 1.7, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'pre-line' }}>
+              {alerta.mensaje}
+            </p>
+            <button
+              onClick={() => setAlerta(null)}
+              style={{
+                width: '100%', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer',
+                fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, color: '#ffffff',
+                background: alerta.tipo === 'exito' ? 'linear-gradient(135deg, #22c55e, #16a34a)' :
+                            alerta.tipo === 'advertencia' ? 'linear-gradient(135deg, #f59e0b, #d97706)' :
+                            'linear-gradient(135deg, #ef4444, #dc2626)',
+                boxShadow: alerta.tipo === 'exito' ? '0 4px 15px rgba(34,197,94,0.3)' :
+                           alerta.tipo === 'advertencia' ? '0 4px 15px rgba(245,158,11,0.3)' :
+                           '0 4px 15px rgba(239,68,68,0.3)',
+                transition: 'all 0.2s'
+              }}
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+      <ModalAlerta alerta={alerta} onClose={() => setAlerta(null)} />
     </main>
   );
 }
-
+function ModalAlerta({ alerta, onClose }: { alerta: any, onClose: () => void }) {
+  if (!alerta) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease' }}>
+      <div style={{ background: '#ffffff', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '420px', boxShadow: '0 25px 60px rgba(0,0,0,0.2)', textAlign: 'center' }}>
+        <div style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px',
+          background: alerta.tipo === 'exito' ? '#dcfce7' : alerta.tipo === 'advertencia' ? '#fef9c3' : '#fee2e2'
+        }}>
+          {alerta.tipo === 'exito' ? '✅' : alerta.tipo === 'advertencia' ? '⚠️' : '❌'}
+        </div>
+        <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: 800, color: '#0f172a', fontFamily: 'Syne, sans-serif' }}>
+          {alerta.titulo}
+        </h3>
+        <p style={{ margin: '0 0 28px 0', fontSize: '14px', color: '#64748b', lineHeight: 1.7, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'pre-line' }}>
+          {alerta.mensaje}
+        </p>
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer',
+            fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, color: '#ffffff',
+            background: alerta.tipo === 'exito' ? 'linear-gradient(135deg, #22c55e, #16a34a)' :
+                        alerta.tipo === 'advertencia' ? 'linear-gradient(135deg, #f59e0b, #d97706)' :
+                        'linear-gradient(135deg, #ef4444, #dc2626)',
+            boxShadow: alerta.tipo === 'exito' ? '0 4px 15px rgba(34,197,94,0.3)' :
+                       alerta.tipo === 'advertencia' ? '0 4px 15px rgba(245,158,11,0.3)' :
+                       '0 4px 15px rgba(239,68,68,0.3)',
+            transition: 'all 0.2s'
+          }}
+        >
+          Entendido
+        </button>
+      </div>
+    </div>
+  );
+}
 function TarjetaProducto({ producto, carrito, onActualizar }: { producto: ProductoStock, carrito: ItemCarrito[], onActualizar: (prod: ProductoStock, cambio: number) => void }) {
   const tieneStock = producto.stock > 0;
   const itemEnCarrito = carrito.find(item => item.material_id === producto.material_id);
