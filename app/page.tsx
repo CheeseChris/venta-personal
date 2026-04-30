@@ -581,54 +581,57 @@ export default function Home() {
           </div>
         )}
       {modalAgencia && (
-          <div
-            onClick={(e) => { if (e.target === e.currentTarget) setModalAgencia(false); }}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease forwards' }}
-          >
-            <div style={{ background: 'linear-gradient(135deg, #0d1b3e, #0a1628)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '24px', padding: '40px', width: '100%', maxWidth: '440px', boxShadow: '0 0 80px rgba(6,182,212,0.15)' }}>
+  <div
+    onClick={(e) => { if (e.target === e.currentTarget) setModalAgencia(false); }}
+    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease forwards' }}
+  >
+    <div style={{ background: 'linear-gradient(135deg, #0d1b3e, #0a1628)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '440px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 0 80px rgba(6,182,212,0.15)' }}>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#67e8f9', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: 'DM Sans, sans-serif' }}>Región {regionPendiente}</p>
-                  <h2 style={{ margin: '6px 0 0 0', fontSize: '24px', fontWeight: 800, color: '#ffffff', fontFamily: 'Syne, sans-serif' }}>¿A qué agencia perteneces?</h2>
-                </div>
-                <button
-                  onClick={() => setModalAgencia(false)}
-                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '50%', width: '36px', height: '36px', color: '#ffffff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                >✕</button>
-              </div>
+      {/* Header fijo */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexShrink: 0 }}>
+        <div>
+          <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#67e8f9', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: 'DM Sans, sans-serif' }}>Región {regionPendiente}</p>
+          <h2 style={{ margin: '6px 0 0 0', fontSize: '22px', fontWeight: 800, color: '#ffffff', fontFamily: 'Syne, sans-serif' }}>¿A qué agencia perteneces?</h2>
+        </div>
+        <button
+          onClick={() => setModalAgencia(false)}
+          style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '50%', width: '36px', height: '36px', color: '#ffffff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+        >✕</button>
+      </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {agenciasPorRegion.length === 0 ? (
-                  <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontFamily: 'DM Sans, sans-serif' }}>
-                    Cargando agencias...
-                  </p>
-                ) : (
-                  agenciasPorRegion.map((agencia, index) => (
-                    <button
-                      key={agencia}
-                      onClick={() => { setModalAgencia(false); cargarDatos(regionPendiente!, agencia); }}
-                      className="modal-btn"
-                      style={{
-                        background: index === 0 ? 'linear-gradient(135deg, #06b6d4, #0891b2)' : 'rgba(255,255,255,0.06)',
-                        border: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: '16px', padding: '20px 24px', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '16px',
-                        fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%'
-                      }}
-                    >
-                      <span style={{ fontSize: '28px', flexShrink: 0 }}>🏢</span>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{agencia}</p>
-                      </div>
-                      <span style={{ opacity: 0.6, fontSize: '18px' }}>→</span>
-                    </button>
-                  ))
-                )}
+      {/* Lista con scroll */}
+      <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
+        {agenciasPorRegion.length === 0 ? (
+          <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontFamily: 'DM Sans, sans-serif' }}>
+            Cargando agencias...
+          </p>
+        ) : (
+          agenciasPorRegion.map((agencia, index) => (
+            <button
+              key={agencia}
+              onClick={() => { setModalAgencia(false); cargarDatos(regionPendiente!, agencia); }}
+              className="modal-btn"
+              style={{
+                background: index === 0 ? 'linear-gradient(135deg, #06b6d4, #0891b2)' : 'rgba(255,255,255,0.06)',
+                border: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '14px', padding: '16px 20px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '14px',
+                fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%',
+                flexShrink: 0
+              }}
+            >
+              <span style={{ fontSize: '22px', flexShrink: 0 }}>🏢</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>{agencia}</p>
               </div>
-            </div>
-          </div>
+              <span style={{ opacity: 0.6, fontSize: '16px' }}>→</span>
+            </button>
+          ))
         )}
+      </div>
+    </div>
+  </div>
+)}
       </main>
     );
   }
