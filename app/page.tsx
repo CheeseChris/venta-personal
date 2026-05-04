@@ -620,7 +620,12 @@ export default function Home() {
             >
               <span style={{ fontSize: '22px', flexShrink: 0 }}>🏢</span>
               <div style={{ flex: 1 }}>
-                <p style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>{agencia}</p>
+                <p style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>
+                  {agencia === 'COMAS' ? 'COMAS (LIMA NORTE)'
+                  : agencia === 'VES' ? 'VES (CROMO, LIMA SUR)'
+                  : agencia === 'HUACHIPA' ? 'HUACHIPA (LA MOLINA, EEFF)'
+                  : agencia}
+                </p>
               </div>
               <span style={{ opacity: 0.6, fontSize: '16px' }}>→</span>
             </button>
