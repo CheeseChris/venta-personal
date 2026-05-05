@@ -669,6 +669,7 @@ export default function Home() {
                   {agencia === 'COMAS' ? 'COMAS (LIMA NORTE)'
                   : agencia === 'VES' ? 'VES (CROMO, LIMA SUR)'
                   : agencia === 'HUACHIPA' ? 'HUACHIPA (LA MOLINA, EEFF)'
+                  : agencia === 'SULLANA' ? 'SULLANA (PIURA, TALARA)'
                   : agencia}
                 </p>
               </div>
@@ -902,6 +903,7 @@ export default function Home() {
       <option value="Ag. Piura">Ag. Piura</option>
       <option value="Ag. Talara">Ag. Talara</option>
       <option value="Ag. Tumbes">Ag. Tumbes</option>
+      <option value="Ag. Sullana">Ag. Sullana</option>
     </>
   )}
 </select>
