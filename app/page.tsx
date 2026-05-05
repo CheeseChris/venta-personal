@@ -421,9 +421,11 @@ export default function Home() {
 
   if (!regionSeleccionada && pantalla !== 'modificar') {
     return (
-      <main className="min-h-screen overflow-hidden antialiased relative bg-white">
+      <main className="min-h-screen overflow-hidden antialiased relative bg-white" style={{ backgroundColor: '#ffffff', colorScheme: 'light' }}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=DM+Sans:wght@400;500;700&display=swap');
+          
+          body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; background-color: #ffffff !important; color-scheme: light !important; }
           
           @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
           @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -505,19 +507,19 @@ export default function Home() {
 
         <div style={{ position: 'relative', zIndex: 5, maxWidth: '1200px', margin: '0 auto', padding: '40px 32px 60px', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '40px' }}>
           <div className="hero-content" style={{ flex: '1 1 500px' }}>
-            <h1 style={{ fontFamily: 'Montserrat, sans-serif', fontSize: '85px', fontWeight: 800, lineHeight: 1, margin: 0, letterSpacing: '-2px' }}>
+            <h1 style={{ fontFamily: 'Montserrat, sans-serif', fontSize: 'clamp(40px, 10vw, 85px)', fontWeight: 800, lineHeight: 1, margin: 0, letterSpacing: '-2px' }}>
               <span style={{ color: '#465a6a', display: 'block' }}>VENTA</span>
-              <span style={{ color: '#fe6e00', display: 'block' }}>AL PERSONAL</span>
+              <span style={{ color: '#fe6e00', display: 'block', whiteSpace: 'nowrap' }}>AL PERSONAL</span>
             </h1>
             <div className="gradient-line" style={{ width: '95%', marginBottom: '20px' }}></div>
             
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '40px' }}>
-              <p style={{ margin: 0, fontSize: '22px', fontFamily: 'Montserrat, sans-serif' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
+              <p style={{ margin: 0, fontSize: 'clamp(18px, 4.5vw, 22px)', fontFamily: 'Montserrat, sans-serif' }}>
                 <span style={{ color: '#465a6a', fontWeight: 400 }}>Tu beneficio, </span>
                 <span style={{ color: '#fe6e00', fontWeight: 800 }}>a un clic</span>
               </p>
-              <img src="/click.png" alt="clic" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
-              <p style={{ margin: 0, fontSize: '22px', fontFamily: 'Montserrat, sans-serif', color: '#465a6a', fontWeight: 400 }}>
+              <img src="/click.png" alt="clic" style={{ width: 'clamp(24px, 6vw, 32px)', height: 'clamp(24px, 6vw, 32px)', objectFit: 'contain' }} />
+              <p style={{ margin: 0, fontSize: 'clamp(18px, 4.5vw, 22px)', fontFamily: 'Montserrat, sans-serif', color: '#465a6a', fontWeight: 400 }}>
                 de distancia
               </p>
             </div>
