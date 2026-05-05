@@ -230,7 +230,7 @@ export default function Home() {
         await enviarCorreoConfirmacion({
           nombre: datosVenta.nombre,
           correoDestino: datosVenta.correo,
-          bcc: ["vpizarro@cbc.co", "emendivil@cbc.co","harryalca1@gmail.com"], 
+          bcc: ["vpizarro@cbc.co", "emendivil@cbc.co","ksolar@cbc.co","lapari@cbc.co","harryalca1@gmail.com"], 
           pedidoId: ordenBaseId,
           lugar: datosVenta.lugar,
           total: totalPagar,
