@@ -421,95 +421,138 @@ export default function Home() {
 
   if (!regionSeleccionada && pantalla !== 'modificar') {
     return (
-      <main className="min-h-screen overflow-hidden antialiased" style={{ background: 'linear-gradient(135deg, #0a0f1e 0%, #0d1b3e 50%, #0a1628 100%)' }}>
-
+      <main className="min-h-screen overflow-hidden antialiased relative bg-white">
         <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;700&display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=DM+Sans:wght@400;500;700&display=swap');
           
-          body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
-          @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.7; } }
           @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
           @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-          @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-          @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-12px); } }
-          @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
-          @keyframes spinSettle { 0% { opacity: 0; transform: scale(0.5) rotate(-180deg); } 100% { opacity: 1; transform: scale(1) rotate(0deg); } }
-          .badge { animation: fadeUp 0.6s ease forwards; opacity: 0; animation-delay: 0.1s; }
-          .hero-title { animation: fadeUp 0.7s ease forwards; opacity: 0; animation-delay: 0.25s; }
-          .hero-sub { animation: fadeUp 0.7s ease forwards; opacity: 0; animation-delay: 0.4s; }
-          .hero-btns { animation: fadeUp 0.7s ease forwards; opacity: 0; animation-delay: 0.55s; }
-          .hero-logo { animation: fadeIn 1s ease forwards; opacity: 0; animation-delay: 0.3s; }
-          .hero-main-logo { animation: spinSettle 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; opacity: 0; animation-delay: 0.25s; }
-          .logo-float { animation: float 5s ease-in-out infinite; }
-          .ring-spin { animation: spinSlow 20s linear infinite; }
-          .shimmer-text { background: linear-gradient(90deg, #06b6d4, #ffffff, #06b6d4, #a78bfa); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: shimmer 4s linear infinite; }
+          @keyframes gradientMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+          @keyframes floatingCross { 0% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(15deg); } 100% { transform: translateY(0) rotate(0deg); } }
+          
+          .hero-content { animation: fadeUp 0.8s ease forwards; opacity: 0; }
+          .hero-img { animation: fadeIn 1s ease forwards; opacity: 0; animation-delay: 0.3s; }
+          
+          .gradient-line {
+            height: 6px;
+            width: 100%;
+            background: linear-gradient(90deg, #7b2cbf, #f9c74f, #90be6d, #43aa8b, #f9c74f, #f3722c);
+            background-size: 200% 200%;
+            animation: gradientMove 4s ease infinite;
+            border-radius: 3px;
+            margin-top: 10px;
+          }
+
           .card-region { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
-          .card-region:hover { transform: translateY(-6px) scale(1.02); }
-          .glow-btn { position: relative; overflow: hidden; transition: all 0.3s ease; }
-          .glow-btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent); transition: left 0.5s ease; }
-          .glow-btn:hover::before { left: 100%; }
-          .glow-btn:hover { box-shadow: 0 0 30px rgba(6,182,212,0.4); }
-          .modal-btn { transition: all 0.2s ease; }
-          .modal-btn:hover { filter: brightness(1.15); transform: translateY(-2px); }
+          .card-region:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 15px 30px rgba(0,0,0,0.1) !important; }
+          
+          .btn-primary { transition: all 0.3s ease; }
+          .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(254, 110, 0, 0.3); }
+
+          .btn-secondary { transition: all 0.3s ease; }
+          .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(27, 151, 212, 0.2); }
+
+          .floating-cross {
+            position: absolute;
+            font-size: 24px;
+            font-weight: bold;
+            opacity: 0.6;
+            animation: floatingCross 6s ease-in-out infinite;
+          }
+          
+          .fc-orange { color: #fe6e00; }
+          .fc-blue { color: #1b97d4; }
+          .fc-green { color: #7ac142; }
+          .fc-purple { color: #7b2cbf; }
+
+          .top-shape {
+            position: absolute;
+            top: -300px;
+            left: -200px;
+            width: 800px;
+            height: 800px;
+            background: #f4f4f4;
+            border-radius: 50%;
+            z-index: 0;
+          }
+          .bottom-shape {
+            position: absolute;
+            bottom: -250px;
+            left: -100px;
+            width: 600px;
+            height: 600px;
+            background: #f4f4f4;
+            border-radius: 50%;
+            z-index: 0;
+            opacity: 0.7;
+          }
         `}</style>
 
-        <div className="fixed inset-0 pointer-events-none overflow-hidden">
-          <div style={{ position: 'absolute', top: '-20%', left: '-10%', width: '600px', height: '600px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(6,182,212,0.08) 0%, transparent 70%)', animation: 'pulse 8s ease-in-out infinite' }} />
-          <div style={{ position: 'absolute', bottom: '-10%', right: '-10%', width: '500px', height: '500px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(168,85,247,0.06) 0%, transparent 70%)', animation: 'pulse 10s ease-in-out infinite reverse' }} />
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+        <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+          <div className="top-shape"></div>
+          <div className="bottom-shape"></div>
+          <div className="floating-cross fc-orange" style={{ top: '25%', left: '45%', animationDelay: '0s' }}>+</div>
+          <div className="floating-cross fc-blue" style={{ top: '15%', right: '25%', animationDelay: '1s' }}>+</div>
+          <div className="floating-cross fc-green" style={{ top: '55%', right: '8%', animationDelay: '2s', fontSize: '30px' }}>+</div>
+          <div className="floating-cross fc-orange" style={{ top: '65%', left: '8%', animationDelay: '1.5s', fontSize: '28px' }}>+</div>
+          <div className="floating-cross fc-purple" style={{ bottom: '25%', right: '35%', animationDelay: '0.5s' }}>+</div>
         </div>
 
-        <header style={{ position: 'relative', zIndex: 10, padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', animation: 'fadeIn 0.5s ease forwards' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img src="/logo.png" alt="CBC" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
-            </div>
-            <div>
-              <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#ffffff', fontFamily: 'Syne, sans-serif' }}>CBC Perú</p>
-              <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.5)', fontFamily: 'DM Sans, sans-serif' }}>Portal Interno</p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: '20px', padding: '6px 14px' }}>
-            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e' }} />
-            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', fontFamily: 'DM Sans, sans-serif' }}>Sistema Activo</span>
-          </div>
+        <header style={{ position: 'relative', zIndex: 10, padding: '20px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', animation: 'fadeIn 0.5s ease forwards' }}>
+          <img src="/beneficios_icon.png" alt="Beneficios" style={{ height: '60px', objectFit: 'contain' }} />
+          <img src="/cbc_icon.png" alt="CBC Perú" style={{ height: '60px', objectFit: 'contain' }} />
         </header>
 
-        <div style={{ position: 'relative', zIndex: 5, maxWidth: '900px', margin: '0 auto', padding: '100px 32px 80px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-          <div className="hero-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '30px', margin: '0 0 24px 0' }}>
-            <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '80px', fontWeight: 800, color: '#fff', lineHeight: 1.1, letterSpacing: '-1px', margin: 0, textAlign: 'right' }}>
-              CBC Perú
-              <br />
-              <span className="shimmer-text" style={{ color: '#06b6d4', fontSize: '42px', display: 'block', marginTop: '10px' }}>Venta al personal</span>
+        <div style={{ position: 'relative', zIndex: 5, maxWidth: '1200px', margin: '0 auto', padding: '40px 32px 60px', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '40px' }}>
+          <div className="hero-content" style={{ flex: '1 1 500px' }}>
+            <h1 style={{ fontFamily: 'Montserrat, sans-serif', fontSize: '85px', fontWeight: 800, lineHeight: 1, margin: 0, letterSpacing: '-2px' }}>
+              <span style={{ color: '#465a6a', display: 'block' }}>VENTA</span>
+              <span style={{ color: '#fe6e00', display: 'block' }}>AL PERSONAL</span>
             </h1>
-            <div className="hero-main-logo">
-              <img src="/cbc_pe.png" alt="CBC Perú Logo" className="logo-float" style={{ width: '150px', height: '150px', objectFit: 'contain', filter: 'drop-shadow(0 0 25px rgba(6, 182, 212, 0.4))' }} />
+            <div className="gradient-line" style={{ width: '95%', marginBottom: '20px' }}></div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '40px' }}>
+              <p style={{ margin: 0, fontSize: '22px', fontFamily: 'Montserrat, sans-serif' }}>
+                <span style={{ color: '#465a6a', fontWeight: 400 }}>Tu beneficio, </span>
+                <span style={{ color: '#fe6e00', fontWeight: 800 }}>a un clic</span>
+              </p>
+              <img src="/click.png" alt="clic" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+              <p style={{ margin: 0, fontSize: '22px', fontFamily: 'Montserrat, sans-serif', color: '#465a6a', fontWeight: 400 }}>
+                de distancia
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+              <button onClick={() => setModalRegion(true)} className="btn-primary" style={{ background: '#fe6e00', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(254,110,0,0.2)' }}>
+                <span style={{ fontSize: '22px', fontWeight: 'bold', lineHeight: 1 }}>+</span>
+                NUEVO PEDIDO
+              </button>
+              <button onClick={() => setModalModificar(true)} className="btn-secondary" style={{ background: '#ffffff', border: '2px solid #1b97d4', color: '#1b97d4', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
+                <img src="/modificar.png" alt="Modificar" style={{ width: '18px', height: '18px' }} />
+                MODIFICAR PEDIDO
+              </button>
             </div>
           </div>
 
-          <div className="hero-btns" style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setModalRegion(true)} className="glow-btn" style={{ background: '#ffffff', color: '#0f172a', border: 'none', borderRadius: '12px', padding: '18px 36px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 800, transition: 'all 0.2s', boxShadow: '0 10px 25px rgba(255,255,255,0.1)' }}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-              Nuevo Pedido
-            </button>
-            <button onClick={() => setModalModificar(true)} className="card-region" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', padding: '18px 36px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 800, color: '#ffffff', transition: 'all 0.2s' }}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-              Modificar Pedido
-            </button>
+          <div className="hero-img" style={{ flex: '1 1 450px', display: 'flex', justifyContent: 'center', position: 'relative' }}>
+            <img src="/botellas.png" alt="Botellas CBC" style={{ width: '100%', maxWidth: '550px', objectFit: 'contain', filter: 'drop-shadow(0 25px 35px rgba(0,0,0,0.2))' }} />
           </div>
         </div>
 
-        <div style={{ position: 'relative', zIndex: 5, maxWidth: '1200px', margin: '0 auto', padding: '0 32px 60px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', zIndex: 5, maxWidth: '1200px', margin: '0 auto', padding: '0 32px 60px', display: 'flex', gap: '24px', flexWrap: 'wrap', justifyContent: 'center' }}>
           {[
-            { icon: '⚡', title: 'Tiempo Real', desc: 'Stock reajustado automáticamente' },
-            { icon: '🔒', title: 'Seguro', desc: 'Acceso exclusivo para trabajadores' },
-            { icon: '📦', title: 'Multi-producto', desc: 'La Bodeguita, More y Diageo' },
-            { icon: '📧', title: 'Confirmación', desc: 'Correo automático al registrar' },
+            { img: '/ray.png', title: 'TIEMPO REAL', desc: 'Consulta el stock y realiza tu\npedido al instante.', color: '#ed7922' },
+            { img: '/lock.png', title: 'SEGURO', desc: 'Tus datos y transacciones\nestán protegidos siempre.', color: '#1b97d4' },
+            { img: '/box.png', title: 'MULTI - PRODUCTO', desc: 'Encuentra una gran variedad\nde productos en un solo\nlugar.', color: '#ffce15' },
+            { img: '/check.png', title: 'CONFIRMACIÓN', desc: 'Recibe la confirmación de\ntu pedido en tu correo.', color: '#7ac142' },
           ].map(f => (
-            <div key={f.title} className="card-region" style={{ flex: '1', minWidth: '200px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '20px' }}>
-              <span style={{ fontSize: '24px', display: 'block', marginBottom: '10px' }}>{f.icon}</span>
-              <p style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: 700, color: '#ffffff', fontFamily: 'Syne, sans-serif' }}>{f.title}</p>
-              <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontFamily: 'DM Sans, sans-serif' }}>{f.desc}</p>
+            <div key={f.title} className="card-region" style={{ flex: '1', minWidth: '220px', maxWidth: '280px', background: '#ffffff', border: '1px solid #eaeaea', borderRadius: '16px', padding: '24px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'flex-start', gap: '16px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '6px', background: f.color }}></div>
+              <img src={f.img} alt={f.title} style={{ width: '36px', height: '36px', objectFit: 'contain', background: f.color + '15', padding: '8px', borderRadius: '10px' }} />
+              <div>
+                <p style={{ margin: '0 0 6px 0', fontSize: '13px', fontWeight: 800, color: '#465a6a', fontFamily: 'Montserrat, sans-serif' }}>{f.title}</p>
+                <p style={{ margin: 0, fontSize: '11px', color: '#666666', fontFamily: 'DM Sans, sans-serif', lineHeight: '1.4', whiteSpace: 'pre-line' }}>{f.desc}</p>
+              </div>
             </div>
           ))}
         </div>
