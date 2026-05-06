@@ -115,6 +115,7 @@ export async function registrarPedido(pedidoData: {
   pedido_id: string;
   nombre_cliente: string;
   agencia: string;
+  agencia_inventario: string;  // ← esta línea
   correo: string;
   material_id: string;
   descripcion: string;
@@ -136,25 +137,27 @@ export async function registrarPedido(pedidoData: {
       INSERT INTO registro_pedidos (
         pedido_id, fecha, hora, nombre_cliente, agencia, correo,
         material_id, descripcion, cantidad, precio_total,
-        estado, codigo_empleado, comprobante_url
+        estado, codigo_empleado, comprobante_url, agencia_inventario
       ) VALUES (
         ${pedidoData.pedido_id}, ${fecha}, ${hora}, ${pedidoData.nombre_cliente},
         ${pedidoData.agencia}, ${pedidoData.correo}, ${pedidoData.material_id},
         ${pedidoData.descripcion}, ${pedidoData.cantidad}, ${pedidoData.precio_total},
-        'EN REVISION', ${pedidoData.codigo_empleado}, ${pedidoData.comprobante_url}
+        'EN REVISION', ${pedidoData.codigo_empleado}, ${pedidoData.comprobante_url},
+        ${pedidoData.agencia_inventario}
       );
     `;
 
     await sql`
       UPDATE stock_disponible 
       SET stock = stock - ${pedidoData.cantidad}
-      WHERE material_id = ${pedidoData.material_id};
+      WHERE material_id = ${pedidoData.material_id}
+        AND agencia = ${pedidoData.agencia_inventario};
     `;
 
     return { exito: true };
   } catch (error) {
     console.error("🔥 Error en Postgres (Registro):", error);
-    return { exito: false, error: (error as any).message ?? "Error desconocido en base de datos" };
+    return { exito: false, error: (error as any).message ?? "Error desconocido" };
   }
 }
 
@@ -348,16 +351,14 @@ export async function enviarCorreoConfirmacion(datos: {
 
 export interface PedidoCompleto {
   pedido_id: string;
-  fecha: string;
-  hora: string;
   nombre_cliente: string;
-  agencia: string;
+  agencia: string;           // lugar de entrega (no cambia)
+  agencia_inventario: string; // ← NUEVO: agencia del stock (COMAS, VES, etc.)
   correo: string;
   material_id: string;
   descripcion: string;
   cantidad: number;
   precio_total: number;
-  estado: string;
   codigo_empleado: string;
   comprobante_url: string;
 }

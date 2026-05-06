@@ -204,17 +204,18 @@ export default function Home() {
       for (const item of carrito) {
         const idUnicoFila = `${ordenBaseId}-${item.material_id}`;
         const respuesta = await registrarPedido({
-          pedido_id: idUnicoFila,
-          nombre_cliente: datosVenta.nombre,
-          agencia: datosVenta.lugar,
-          correo: datosVenta.correo || 'Sin correo',
-          material_id: item.material_id,
-          descripcion: item.descripcion,
-          cantidad: item.cantidad,
-          precio_total: item.cantidad * item.precio_unitario,
-          codigo_empleado: datosVenta.codigoEmpleado,
-          comprobante_url: comprobanteUrl,
-        });
+        pedido_id: idUnicoFila,
+        nombre_cliente: datosVenta.nombre,
+        agencia: datosVenta.lugar,
+        agencia_inventario: agenciaActual,  // ← agregar esta línea
+        correo: datosVenta.correo || 'Sin correo',
+        material_id: item.material_id,
+        descripcion: item.descripcion,
+        cantidad: item.cantidad,
+        precio_total: item.cantidad * item.precio_unitario,
+        codigo_empleado: datosVenta.codigoEmpleado,
+        comprobante_url: comprobanteUrl,
+      });
         if (!respuesta.exito) throw new Error("Fallo al insertar en la base de datos");
       }
 
