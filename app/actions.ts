@@ -351,9 +351,11 @@ export async function enviarCorreoConfirmacion(datos: {
 
 export interface PedidoCompleto {
   pedido_id: string;
+  fecha: string;              // ← AÑADIDO
+  hora: string;               // ← AÑADIDO
   nombre_cliente: string;
-  agencia: string;           // lugar de entrega (no cambia)
-  agencia_inventario: string; // ← NUEVO: agencia del stock (COMAS, VES, etc.)
+  agencia: string;
+  agencia_inventario: string;
   correo: string;
   material_id: string;
   descripcion: string;
@@ -361,6 +363,7 @@ export interface PedidoCompleto {
   precio_total: number;
   codigo_empleado: string;
   comprobante_url: string;
+  estado: string;             // ← AÑADIDO
 }
 
 export async function obtenerTodosLosPedidos(): Promise<PedidoCompleto[]> {
@@ -387,12 +390,11 @@ export async function obtenerTodosLosPedidos(): Promise<PedidoCompleto[]> {
 
 export async function actualizarEstadoPedido(pedidoId: string, nuevoEstado: string) {
   try {
-    // Usamos LIKE para abarcar todos los items que compartan el ID del pedido (ej. PED-123%)
     const idDbExacto = `${pedidoId}%`;
 
-    // 1. Obtener los items y su estado actual
+    // 1. Obtener los items con su agencia_inventario
     const { rows: itemsActuales } = await sql<any>`
-      SELECT material_id, cantidad, estado 
+      SELECT material_id, cantidad, estado, agencia_inventario
       FROM registro_pedidos 
       WHERE pedido_id LIKE ${idDbExacto};
     `;
@@ -403,34 +405,39 @@ export async function actualizarEstadoPedido(pedidoId: string, nuevoEstado: stri
 
     const estadoAnterior = itemsActuales[0].estado;
 
-    // 2. Si pasa a RECHAZADO, devolver stock
+    // 2. Si pasa a RECHAZADO, devolver stock A LA AGENCIA CORRECTA
     if (nuevoEstado === 'RECHAZADO' && estadoAnterior !== 'RECHAZADO') {
       for (const item of itemsActuales) {
         await sql`
           UPDATE stock_disponible
           SET stock = stock + ${item.cantidad}
-          WHERE material_id = ${item.material_id};
+          WHERE material_id = ${item.material_id}
+            AND agencia = ${item.agencia_inventario};
         `;
       }
     }
-    // 3. Si estaba RECHAZADO y pasa a otro estado, verificar y restar stock
+    // 3. Si estaba RECHAZADO y pasa a otro estado, restar stock DE LA AGENCIA CORRECTA
     else if (estadoAnterior === 'RECHAZADO' && nuevoEstado !== 'RECHAZADO') {
-      // Validar stock primero para todos los items
       for (const item of itemsActuales) {
         const { rows: stockQuery } = await sql<any>`
-          SELECT stock FROM stock_disponible WHERE material_id = ${item.material_id};
+          SELECT stock FROM stock_disponible 
+          WHERE material_id = ${item.material_id}
+            AND agencia = ${item.agencia_inventario};
         `;
         if (stockQuery.length === 0 || stockQuery[0].stock < item.cantidad) {
-          return { exito: false, error: `Stock insuficiente para volver a aprobar el producto ID: ${item.material_id}` };
+          return { 
+            exito: false, 
+            error: `Stock insuficiente en agencia ${item.agencia_inventario} para producto ${item.material_id}` 
+          };
         }
       }
 
-      // Si hay stock suficiente para todo, restarlo
       for (const item of itemsActuales) {
         await sql`
           UPDATE stock_disponible
           SET stock = stock - ${item.cantidad}
-          WHERE material_id = ${item.material_id};
+          WHERE material_id = ${item.material_id}
+            AND agencia = ${item.agencia_inventario};
         `;
       }
     }
@@ -448,7 +455,6 @@ export async function actualizarEstadoPedido(pedidoId: string, nuevoEstado: stri
     return { exito: false, error: error instanceof Error ? error.message : "Fallo al actualizar el estado" };
   }
 }
-
 // ==========================================
 // ADMIN FUNCTIONS PARA GESTIÓN DE STOCK Y PERSONAL
 // ==========================================
