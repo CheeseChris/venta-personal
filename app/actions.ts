@@ -640,3 +640,28 @@ export async function verificarLimiteBebidas(
     return { permitido: true, cantidadDisponible: 4 };
   }
 }
+
+export async function obtenerEstadoCompras(): Promise<boolean> {
+  try {
+    const { rows } = await sql<{ valor: string }>`
+      SELECT valor FROM configuracion_sistema WHERE clave = 'compras_habilitadas';
+    `;
+    return rows[0]?.valor === 'true';
+  } catch {
+    return true; // Si falla, permite compras por defecto
+  }
+}
+
+export async function toggleEstadoCompras(nuevoEstado: boolean): Promise<{ exito: boolean }> {
+  try {
+    await sql`
+      UPDATE configuracion_sistema 
+      SET valor = ${nuevoEstado ? 'true' : 'false'}
+      WHERE clave = 'compras_habilitadas';
+    `;
+    return { exito: true };
+  } catch (error) {
+    console.error("🔥 Error actualizando estado de compras:", error);
+    return { exito: false };
+  }
+}

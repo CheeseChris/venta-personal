@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { PedidoCompleto, actualizarEstadoPedido } from '../actions';
+import { PedidoCompleto, actualizarEstadoPedido, toggleEstadoCompras } from '../actions';
 
 interface PedidoAgrupado {
   pedido_id_base: string;
@@ -17,8 +17,10 @@ interface PedidoAgrupado {
   items: PedidoCompleto[];
 }
 
-export default function GestionPedidosClient({ pedidosIniciales }: { pedidosIniciales: PedidoCompleto[] }) {
+export default function GestionPedidosClient({ pedidosIniciales, comprasHabilitadasInicial }: { pedidosIniciales: PedidoCompleto[], comprasHabilitadasInicial: boolean }) {  // ← modificado
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>(pedidosIniciales);
+  const [comprasHabilitadas, setComprasHabilitadas] = useState(comprasHabilitadasInicial);  // ← nueva línea
+  const [toggling, setToggling] = useState(false);  // ← nueva línea
   const [procesando, setProcesando] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
@@ -93,6 +95,15 @@ export default function GestionPedidosClient({ pedidosIniciales }: { pedidosInic
     }
     setProcesando(null);
   };
+  const handleToggleCompras = async () => {
+    setToggling(true);
+    const nuevoEstado = !comprasHabilitadas;
+    const result = await toggleEstadoCompras(nuevoEstado);
+    if (result.exito) {
+      setComprasHabilitadas(nuevoEstado);
+    }
+    setToggling(false);
+  };
 
   const descargarExcel = () => {
     // Para el Excel sí exportamos fila por fila para facilitar tablas dinámicas
@@ -123,26 +134,43 @@ export default function GestionPedidosClient({ pedidosIniciales }: { pedidosInic
     <div className="space-y-6">
       {/* Buscador y Exportar */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
-        <div className="relative w-full sm:w-96">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          </div>
-          <input
-            type="text"
-            placeholder="Buscar por código, cliente, vendedor, agencia..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <button
-          onClick={descargarExcel}
-          className="w-full sm:w-auto flex justify-center items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          Descargar Excel
-        </button>
-      </div>
+  <div className="relative w-full sm:w-96">
+    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+    </div>
+    <input
+      type="text"
+      placeholder="Buscar por código, cliente, vendedor, agencia..."
+      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+    />
+  </div>
+
+  <div className="flex gap-3 w-full sm:w-auto">
+    {/* BOTÓN TOGGLE COMPRAS */}
+    <button
+      onClick={handleToggleCompras}
+      disabled={toggling}
+      className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all shadow-sm border-2 ${
+        comprasHabilitadas
+          ? 'bg-green-50 border-green-500 text-green-700 hover:bg-green-100'
+          : 'bg-red-50 border-red-500 text-red-700 hover:bg-red-100'
+      } ${toggling ? 'opacity-60 cursor-not-allowed' : ''}`}
+    >
+      <div className={`w-3 h-3 rounded-full ${comprasHabilitadas ? 'bg-green-500' : 'bg-red-500'}`} />
+      {toggling ? 'Cambiando...' : comprasHabilitadas ? '🟢 Compras Habilitadas' : '🔴 Compras Bloqueadas'}
+    </button>
+
+    <button
+      onClick={descargarExcel}
+      className="flex-1 sm:flex-none flex justify-center items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm"
+    >
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+      Descargar Excel
+    </button>
+  </div>
+</div>
 
       {/* Tabla Agrupada */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">

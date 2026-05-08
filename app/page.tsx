@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { obtenerStockPorRegion, ProductoStock, registrarPedido, obtenerVendedores, 
   Vendedor, enviarCorreoConfirmacion, obtenerPedidoPorId, PedidoExistenteItem, 
-  actualizarPedido, obtenerAgenciasPorRegion, verificarLimiteBebidas } from './actions';
+  actualizarPedido, obtenerAgenciasPorRegion, verificarLimiteBebidas, obtenerEstadoCompras } from './actions';
 
 interface ItemCarrito {
   material_id: string;
@@ -54,6 +54,7 @@ export default function Home() {
   const [cantidadesModificadasMap, setCantidadesModificadasMap] = useState<Record<string, number>>({});
   const [lugarModificado, setLugarModificado] = useState('');
   const [comprobanteModificado, setComprobanteModificado] = useState<File | null>(null);
+  const [comprasHabilitadas, setComprasHabilitadas] = useState<boolean | null>(null);
   // Auto-refresh del stock cada 45 segundos
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -72,6 +73,9 @@ export default function Home() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [regionSeleccionada, agenciaActual, pantalla]);
+  useEffect(() => {
+  obtenerEstadoCompras().then(estado => setComprasHabilitadas(estado));
+}, []);
 
   const cargarDatos = async (region: string, agencia: string) => {
     setRegionSeleccionada(region);
@@ -525,18 +529,29 @@ export default function Home() {
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-              <button onClick={() => setModalRegion(true)} className="btn-primary" style={{ background: '#fe6e00', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(254,110,0,0.2)' }}>
-                <span style={{ fontSize: '22px', fontWeight: 'bold', lineHeight: 1 }}>+</span>
-                NUEVO PEDIDO
-              </button>
-              <button onClick={() => setModalModificar(true)} className="btn-secondary" style={{ background: '#ffffff', border: '2px solid #1b97d4', color: '#1b97d4', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
-                <img src="/modificar.png" alt="Modificar" style={{ width: '18px', height: '18px' }} />
-                MODIFICAR PEDIDO
-              </button>
-            </div>
-          </div>
-
+            {comprasHabilitadas === null ? (
+  <div style={{ height: '52px', width: '320px', background: '#f1f5f9', borderRadius: '8px' }} />
+) : comprasHabilitadas ? (
+  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+    <button onClick={() => setModalRegion(true)} className="btn-primary" style={{ background: '#fe6e00', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(254,110,0,0.2)' }}>
+      <span style={{ fontSize: '22px', fontWeight: 'bold', lineHeight: 1 }}>+</span>
+      NUEVO PEDIDO
+    </button>
+    <button onClick={() => setModalModificar(true)} className="btn-secondary" style={{ background: '#ffffff', border: '2px solid #1b97d4', color: '#1b97d4', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
+      <img src="/modificar.png" alt="Modificar" style={{ width: '18px', height: '18px' }} />
+      MODIFICAR PEDIDO
+    </button>
+  </div>
+) : (
+  <div style={{ background: '#fee2e2', border: '2px solid #fca5a5', borderRadius: '12px', padding: '20px 28px', display: 'flex', alignItems: 'center', gap: '14px', maxWidth: '500px' }}>
+    <span style={{ fontSize: '32px' }}>🔒</span>
+    <div>
+      <p style={{ margin: 0, fontFamily: 'Montserrat, sans-serif', fontWeight: 800, fontSize: '16px', color: '#dc2626' }}>Compras temporalmente deshabilitadas</p>
+      <p style={{ margin: '4px 0 0 0', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', color: '#ef4444' }}>El sistema de pedidos está pausado. Intenta más tarde.</p>
+    </div>
+  </div>
+)}
+</div>
           <div className="hero-img" style={{ flex: '1 1 450px', display: 'flex', justifyContent: 'center', position: 'relative' }}>
             <img src="/botellas.png" alt="Botellas CBC" style={{ width: '100%', maxWidth: '550px', objectFit: 'contain', filter: 'drop-shadow(0 25px 35px rgba(0,0,0,0.2))' }} />
           </div>
