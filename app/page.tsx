@@ -114,6 +114,27 @@ export default function Home() {
   const actualizarCantidad = (producto: ProductoStock, cambio: number) => {
     setCarrito((carritoActual) => {
       const itemExistente = carritoActual.find(item => item.material_id === producto.material_id);
+      // ✅ NUEVA VALIDACIÓN: Límite de 4 unidades totales para Bebidas
+    if (producto.categoria === 'Bebidas' && cambio > 0) {
+      const totalBebidasEnCarrito = carritoActual
+        .filter(item => {
+          const prod = stockReal.find(p => p.material_id === item.material_id);
+          return prod?.categoria === 'Bebidas';
+        })
+        .reduce((suma, item) => suma + item.cantidad, 0);
+
+      const cantidadActualEsteProducto = itemExistente?.cantidad || 0;
+      const totalSinEsteProducto = totalBebidasEnCarrito - cantidadActualEsteProducto;
+
+      if (totalSinEsteProducto + cantidadActualEsteProducto + cambio > 4) {
+        setTimeout(() => mostrarAlerta(
+          "Límite de Bebidas 🥤",
+          "Solo puedes agregar un máximo de 4 unidades en total entre todos los productos de Bebidas.",
+          "advertencia"
+        ), 0);
+        return carritoActual;
+      }
+    }
 
       if (itemExistente) {
         const nuevaCantidad = itemExistente.cantidad + cambio;
@@ -856,7 +877,9 @@ export default function Home() {
                       <p className="font-bold text-slate-800 text-sm mb-1 leading-tight">{item.descripcion}</p>
                       <p className="text-xs font-mono text-slate-400 mb-2">ID: {item.material_id}</p>
                       <div className="flex items-center gap-2">
-                        <span className="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md text-xs border border-blue-100">{item.cantidad} und</span>
+                        <span className="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md text-xs border border-blue-100">
+  {item.cantidad} {stockReal.find(p => p.material_id === item.material_id)?.categoria === 'Bebidas' ? 'Pqt' : 'und'}
+</span>
                         <span className="text-slate-400 text-xs">x</span>
                         <span className="text-slate-700 font-bold text-sm bg-slate-100 px-2 py-1 rounded-md border border-slate-200">S/ {item.precio_unitario.toFixed(2)}</span>
                       </div>
@@ -1101,7 +1124,9 @@ export default function Home() {
                       <div className="flex-1 pr-4">
                         <p className="font-bold text-slate-800 text-sm mb-1">{item.descripcion}</p>
                         <div className="flex items-center gap-2">
-                          <span className="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md text-xs">{item.cantidad} und</span>
+                          <span className="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md text-xs">
+  {item.cantidad} {stockReal.find(p => p.material_id === item.material_id)?.categoria === 'Bebidas' ? 'Pqt' : 'und'}
+</span>
                           <span className="text-slate-400 text-xs">x</span>
                           <span className="text-slate-700 font-bold text-sm">S/ {item.precio_unitario.toFixed(2)}</span>
                         </div>
