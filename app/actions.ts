@@ -363,14 +363,21 @@ export interface PedidoCompleto {
   precio_total: number;
   codigo_empleado: string;
   comprobante_url: string;
-  estado: string;             // ← AÑADIDO
+  estado: string;
+  categoria?: string;
 }
 
 export async function obtenerTodosLosPedidos(): Promise<PedidoCompleto[]> {
   try {
     const { rows } = await sql<any>`
-      SELECT * FROM registro_pedidos
-      ORDER BY fecha DESC, hora DESC;
+      SELECT 
+        rp.*,
+        sd.categoria
+      FROM registro_pedidos rp
+      LEFT JOIN stock_disponible sd 
+        ON rp.material_id = sd.material_id
+        AND rp.agencia_inventario = sd.agencia
+      ORDER BY rp.fecha DESC, rp.hora DESC;
     `;
 
     // Aseguramos que fecha y hora sean strings, ya que Postgres puede devolver objetos Date

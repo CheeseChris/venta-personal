@@ -117,6 +117,7 @@ export default function GestionPedidosClient({ pedidosIniciales, comprasHabilita
       'Material (ID)': p.material_id,
       'Producto': p.descripcion,
       'Cantidad': p.cantidad,
+      'Unidad de compra': p.categoria === 'Bebidas' ? 'Pqt' : 'Und',
       'Total (S/)': p.precio_total,
       'Estado': p.estado,
       'Comprobante': p.comprobante_url !== 'Sin comprobante' ? p.comprobante_url : 'N/A'
