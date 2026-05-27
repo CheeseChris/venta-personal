@@ -116,20 +116,12 @@ export default function Home() {
       const itemExistente = carritoActual.find(item => item.material_id === producto.material_id);
       // ✅ NUEVA VALIDACIÓN: Límite de 4 unidades totales para Bebidas
     if (producto.categoria === 'Bebidas' && cambio > 0) {
-      const totalBebidasEnCarrito = carritoActual
-        .filter(item => {
-          const prod = stockReal.find(p => p.material_id === item.material_id);
-          return prod?.categoria === 'Bebidas';
-        })
-        .reduce((suma, item) => suma + item.cantidad, 0);
-
       const cantidadActualEsteProducto = itemExistente?.cantidad || 0;
-      const totalSinEsteProducto = totalBebidasEnCarrito - cantidadActualEsteProducto;
 
-      if (totalSinEsteProducto + cantidadActualEsteProducto + cambio > 4) {
+      if (cantidadActualEsteProducto + cambio > 4) {
         setTimeout(() => mostrarAlerta(
           "Límite de Bebidas 🥤",
-          "Solo puedes agregar un máximo de 4 unidades en total entre todos los productos de Bebidas.",
+          "Solo puedes agregar un máximo de 4 paquetes de este producto.",
           "advertencia"
         ), 0);
         return carritoActual;
