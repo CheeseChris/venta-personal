@@ -57,35 +57,24 @@ export default function Home() {
   const [comprasHabilitadas, setComprasHabilitadas] = useState<boolean | null>(null);
   // Auto-refresh del stock cada 45 segundos
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const comprasIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
 
   useEffect(() => {
-  // Verificación inicial
-  if (process.env.NEXT_PUBLIC_ENV === 'development') {
-    setComprasHabilitadas(true);
-    return;
-  }
-  
-  obtenerEstadoCompras().then(estado => setComprasHabilitadas(estado));
-
-  // Polling cada 30 segundos
-  comprasIntervalRef.current = setInterval(async () => {
-    const estado = await obtenerEstadoCompras();
-    setComprasHabilitadas(estado);
-
-    // Si se desactivó y el usuario está dentro, botarlo al inicio
-    if (!estado) {
-      setRegionSeleccionada(null);
-      setPantalla('catalogo');
-      setCarrito([]);
-      setMostrarCarrito(false);
+    if (regionSeleccionada && agenciaActual && pantalla === 'catalogo') {
+      intervalRef.current = setInterval(async () => {
+        try {
+          const datosStock = await obtenerStockPorRegion(regionSeleccionada, agenciaActual);
+          setStockReal(datosStock);
+        } catch (e) {
+          console.error("Error refrescando stock", e);
+        }
+      }, 45000); // cada 45 segundos
     }
-  }, 10000);
-
-  return () => {
-    if (comprasIntervalRef.current) clearInterval(comprasIntervalRef.current);
-  };
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [regionSeleccionada, agenciaActual, pantalla]);
+  useEffect(() => {
+  obtenerEstadoCompras().then(estado => setComprasHabilitadas(estado));
 }, []);
 
   const cargarDatos = async (region: string, agencia: string) => {
