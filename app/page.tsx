@@ -114,19 +114,30 @@ export default function Home() {
   const actualizarCantidad = (producto: ProductoStock, cambio: number) => {
     setCarrito((carritoActual) => {
       const itemExistente = carritoActual.find(item => item.material_id === producto.material_id);
-      // ✅ NUEVA VALIDACIÓN: Límite de 4 unidades totales para Bebidas
-    if (producto.categoria === 'Bebidas' && cambio > 0) {
-      const cantidadActualEsteProducto = itemExistente?.cantidad || 0;
+      
+      if (cambio > 0) {
+        // 1. Validar límite de 4 por producto individual
+        const cantidadActualEsteProducto = itemExistente?.cantidad || 0;
+        if (cantidadActualEsteProducto + cambio > 4) {
+          setTimeout(() => mostrarAlerta(
+            "Límite por producto 📦",
+            "Solo puedes agregar un máximo de 4 unidades del mismo producto.",
+            "advertencia"
+          ), 0);
+          return carritoActual;
+        }
 
-      if (cantidadActualEsteProducto + cambio > 4) {
-        setTimeout(() => mostrarAlerta(
-          "Límite de Bebidas 🥤",
-          "Solo puedes agregar un máximo de 4 paquetes de este producto.",
-          "advertencia"
-        ), 0);
-        return carritoActual;
+        // 2. Validar límite global de 4 unidades en total en el carrito
+        const totalUnidadesActuales = carritoActual.reduce((suma, item) => suma + item.cantidad, 0);
+        if (totalUnidadesActuales + cambio > 4) {
+          setTimeout(() => mostrarAlerta(
+            "Límite del pedido alcanzado 🛒",
+            "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.",
+            "advertencia"
+          ), 0);
+          return carritoActual;
+        }
       }
-    }
 
       if (itemExistente) {
         const nuevaCantidad = itemExistente.cantidad + cambio;
@@ -177,6 +188,19 @@ export default function Home() {
     if (!comprobante) {
       mostrarAlerta("Comprobante requerido", "Debes subir el comprobante de pago (Yape o transferencia) para continuar.", "advertencia");
       return;
+    }
+
+    // ✅ VALIDACIÓN: Límite general de 4 unidades en total y por producto
+    const totalUnidades = carrito.reduce((suma, item) => suma + item.cantidad, 0);
+    if (totalUnidades > 4) {
+      mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia");
+      return;
+    }
+    for (const item of carrito) {
+      if (item.cantidad > 4) {
+        mostrarAlerta("Límite por producto 📦", `Solo puedes pedir un máximo de 4 unidades del mismo producto: ${item.descripcion}.`, "advertencia");
+        return;
+      }
     }
 
     setGuardando(true);
@@ -323,6 +347,32 @@ export default function Home() {
 
       if (nuevaCantidad <= 0) return prev;
 
+      if (cambio > 0) {
+        // 1. Validar límite de 4 por producto individual
+        if (nuevaCantidad > 4) {
+          setTimeout(() => mostrarAlerta(
+            "Límite por producto 📦",
+            "Solo puedes agregar un máximo de 4 unidades del mismo producto.",
+            "advertencia"
+          ), 0);
+          return prev;
+        }
+
+        // 2. Validar límite global de 4 unidades en total para el pedido
+        const totalUnidadesNueva = Object.entries(prev).reduce(
+          (suma, [mId, cant]) => suma + (mId === materialId ? nuevaCantidad : cant), 
+          0
+        );
+        if (totalUnidadesNueva > 4) {
+          setTimeout(() => mostrarAlerta(
+            "Límite del pedido alcanzado 🛒",
+            "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.",
+            "advertencia"
+          ), 0);
+          return prev;
+        }
+      }
+
       const maximoPermitido = Number(itemOriginal.stock_actual) + Number(itemOriginal.cantidad);
 
       if (nuevaCantidad > maximoPermitido) {
@@ -371,6 +421,21 @@ export default function Home() {
         cantidad_antigua: itemOriginal.cantidad,
         precio_unitario: Number(itemOriginal.precio_unitario)
       }));
+
+      // ✅ VALIDACIÓN: Límite general de 4 unidades en total y por producto para pedido modificado
+      const totalUnidadesModificado = itemsToUpdate.reduce((suma, item) => suma + item.cantidad_nueva, 0);
+      if (totalUnidadesModificado > 4) {
+        mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia");
+        setGuardando(false);
+        return;
+      }
+      for (const item of itemsToUpdate) {
+        if (item.cantidad_nueva > 4) {
+          mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto.", "advertencia");
+          setGuardando(false);
+          return;
+        }
+      }
 
       const respuesta = await actualizarPedido({
         pedidoId: idPedidoModificar,
