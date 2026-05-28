@@ -672,3 +672,33 @@ export async function toggleEstadoCompras(nuevoEstado: boolean): Promise<{ exito
     return { exito: false };
   }
 }
+
+export async function verificarLimiteGlobalBebidas(
+  codigoEmpleado: string
+): Promise<{ permitido: boolean; mensaje?: string }> {
+  try {
+    const { rows } = await sql<any>`
+      SELECT SUM(rp.cantidad) as total
+      FROM registro_pedidos rp
+      JOIN stock_disponible sd ON rp.material_id = sd.material_id
+      WHERE rp.codigo_empleado = ${codigoEmpleado}
+        AND sd.categoria = 'Bebidas'
+        AND rp.estado != 'RECHAZADO'
+        AND rp.fecha >= (CURRENT_DATE - INTERVAL '28 days');
+    `;
+
+    const total = Number(rows[0]?.total || 0);
+
+    if (total >= 4) {
+      return {
+        permitido: false,
+        mensaje: `Ya alcanzaste el límite de 4 paquetes de bebidas en los últimos 28 días. Podrás realizar un nuevo pedido de bebidas una vez transcurrido ese período.`
+      };
+    }
+
+    return { permitido: true };
+  } catch (error) {
+    console.error("🔥 Error verificando límite global:", error);
+    return { permitido: true };
+  }
+}

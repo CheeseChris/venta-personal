@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { obtenerStockPorRegion, ProductoStock, registrarPedido, obtenerVendedores, 
   Vendedor, enviarCorreoConfirmacion, obtenerPedidoPorId, PedidoExistenteItem, 
-  actualizarPedido, obtenerAgenciasPorRegion, verificarLimiteBebidas, obtenerEstadoCompras } from './actions';
+  actualizarPedido, obtenerAgenciasPorRegion, verificarLimiteBebidas, obtenerEstadoCompras,
+  verificarLimiteGlobalBebidas } from './actions';
 
 interface ItemCarrito {
   material_id: string;
@@ -24,9 +25,19 @@ export default function Home() {
 
   const [comprobante, setComprobante] = useState<File | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [alerta, setAlerta] = useState<{ titulo: string; mensaje: string; tipo: 'error' | 'exito' | 'advertencia' } | null>(null);
+
+  // ✅ INTERFAZ ACTUALIZADA CON onClose OPCIONAL
+  const [alerta, setAlerta] = useState<{
+    titulo: string;
+    mensaje: string;
+    tipo: 'error' | 'exito' | 'advertencia';
+    onClose?: () => void;
+  } | null>(null);
+
   const mostrarAlerta = (titulo: string, mensaje: string, tipo: 'error' | 'exito' | 'advertencia' = 'error') => {
-  setAlerta({ titulo, mensaje, tipo });};
+    setAlerta({ titulo, mensaje, tipo });
+  };
+
   const [vendedoresBD, setVendedoresBD] = useState<Vendedor[]>([]);
   const [busquedaVendedor, setBusquedaVendedor] = useState('');
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
@@ -43,6 +54,7 @@ export default function Home() {
   const [regionPendiente, setRegionPendiente] = useState<string | null>(null);
   const [agenciasPorRegion, setAgenciasPorRegion] = useState<string[]>([]);
   const [modalModificar, setModalModificar] = useState(false);
+  const [modalIdentificacion, setModalIdentificacion] = useState(false);
 
   const [busquedaProducto, setBusquedaProducto] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todos');
@@ -55,7 +67,7 @@ export default function Home() {
   const [lugarModificado, setLugarModificado] = useState('');
   const [comprobanteModificado, setComprobanteModificado] = useState<File | null>(null);
   const [comprasHabilitadas, setComprasHabilitadas] = useState<boolean | null>(null);
-  // Auto-refresh del stock cada 45 segundos
+
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -67,15 +79,16 @@ export default function Home() {
         } catch (e) {
           console.error("Error refrescando stock", e);
         }
-      }, 45000); // cada 45 segundos
+      }, 45000);
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [regionSeleccionada, agenciaActual, pantalla]);
+
   useEffect(() => {
-  obtenerEstadoCompras().then(estado => setComprasHabilitadas(estado));
-}, []);
+    obtenerEstadoCompras().then(estado => setComprasHabilitadas(estado));
+  }, []);
 
   const cargarDatos = async (region: string, agencia: string) => {
     setRegionSeleccionada(region);
@@ -104,49 +117,38 @@ export default function Home() {
       setCargando(false);
     }
   };
+
   const seleccionarRegion = async (region: string) => {
-  setModalRegion(false);
-  setRegionPendiente(region);
-  const agencias = await obtenerAgenciasPorRegion(region);
-  setAgenciasPorRegion(agencias);
-  setModalAgencia(true);
-};
+    setModalRegion(false);
+    setRegionPendiente(region);
+    const agencias = await obtenerAgenciasPorRegion(region);
+    setAgenciasPorRegion(agencias);
+    setModalAgencia(true);
+  };
+
   const actualizarCantidad = (producto: ProductoStock, cambio: number) => {
     setCarrito((carritoActual) => {
       const itemExistente = carritoActual.find(item => item.material_id === producto.material_id);
       
       if (cambio > 0) {
-        // 1. Validar límite de 4 por producto individual
         const cantidadActualEsteProducto = itemExistente?.cantidad || 0;
         if (cantidadActualEsteProducto + cambio > 4) {
-          setTimeout(() => mostrarAlerta(
-            "Límite por producto 📦",
-            "Solo puedes agregar un máximo de 4 unidades del mismo producto.",
-            "advertencia"
-          ), 0);
+          setTimeout(() => mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto.", "advertencia"), 0);
           return carritoActual;
         }
-
-        // 2. Validar límite global de 4 unidades en total en el carrito
         const totalUnidadesActuales = carritoActual.reduce((suma, item) => suma + item.cantidad, 0);
         if (totalUnidadesActuales + cambio > 4) {
-          setTimeout(() => mostrarAlerta(
-            "Límite del pedido alcanzado 🛒",
-            "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.",
-            "advertencia"
-          ), 0);
+          setTimeout(() => mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia"), 0);
           return carritoActual;
         }
       }
 
       if (itemExistente) {
         const nuevaCantidad = itemExistente.cantidad + cambio;
-
         if (nuevaCantidad > producto.stock) {
           setTimeout(() => mostrarAlerta("Stock insuficiente", `Solo quedan ${producto.stock} unidades disponibles en el almacén para este producto.`, "advertencia"), 0);
           return carritoActual;
         }
-
         if (nuevaCantidad <= 0) return carritoActual.filter(item => item.material_id !== producto.material_id);
         return carritoActual.map(item => item.material_id === producto.material_id ? { ...item, cantidad: nuevaCantidad } : item);
       } else {
@@ -164,10 +166,6 @@ export default function Home() {
   };
 
   const procesarPedido = async () => {
-    if (!datosVenta.nombre || !datosVenta.codigoEmpleado) {
-      mostrarAlerta("Nombre requerido", "Debes buscar y SELECCIONAR tu nombre de la lista desplegable.", "advertencia"); return;
-      return;
-    }
     if (!datosVenta.nombre || !datosVenta.codigoEmpleado) {
       mostrarAlerta("Nombre requerido", "Debes buscar y SELECCIONAR tu nombre de la lista desplegable.", "advertencia");
       return;
@@ -190,7 +188,6 @@ export default function Home() {
       return;
     }
 
-    // ✅ VALIDACIÓN: Límite general de 4 unidades en total y por producto
     const totalUnidades = carrito.reduce((suma, item) => suma + item.cantidad, 0);
     if (totalUnidades > 4) {
       mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia");
@@ -207,15 +204,10 @@ export default function Home() {
     const ordenBaseId = `PED-${Math.floor(Math.random() * 1000000)}`;
 
     try {
-      // ✅ VERIFICAR LÍMITE DE BEBIDAS ANTES DE REGISTRAR
       for (const item of carrito) {
         const productoEnStock = stockReal.find(p => p.material_id === item.material_id);
         if (productoEnStock?.categoria === 'Bebidas') {
-          const verificacion = await verificarLimiteBebidas(
-            datosVenta.codigoEmpleado,
-            item.material_id,
-            item.cantidad
-          );
+          const verificacion = await verificarLimiteBebidas(datosVenta.codigoEmpleado, item.material_id, item.cantidad);
           if (!verificacion.permitido) {
             mostrarAlerta("Límite de Bebidas 🥤", `${item.descripcion}\n\n${verificacion.mensaje}`, "advertencia");
             setGuardando(false);
@@ -225,18 +217,12 @@ export default function Home() {
       }
 
       let comprobanteUrl = 'Sin comprobante';
-
       if (comprobante) {
         const formData = new FormData();
         formData.append('file', comprobante);
         formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
         formData.append('folder', 'comprobantes_cbc');
-
-        const uploadRes = await fetch(
-          `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
-          { method: 'POST', body: formData }
-        );
-
+        const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: formData });
         if (!uploadRes.ok) throw new Error("No se pudo subir el comprobante");
         const uploadData = await uploadRes.json();
         comprobanteUrl = uploadData.secure_url;
@@ -245,18 +231,18 @@ export default function Home() {
       for (const item of carrito) {
         const idUnicoFila = `${ordenBaseId}-${item.material_id}`;
         const respuesta = await registrarPedido({
-        pedido_id: idUnicoFila,
-        nombre_cliente: datosVenta.nombre,
-        agencia: datosVenta.lugar,
-        agencia_inventario: agenciaActual,  // ← agregar esta línea
-        correo: datosVenta.correo || 'Sin correo',
-        material_id: item.material_id,
-        descripcion: item.descripcion,
-        cantidad: item.cantidad,
-        precio_total: item.cantidad * item.precio_unitario,
-        codigo_empleado: datosVenta.codigoEmpleado,
-        comprobante_url: comprobanteUrl,
-      });
+          pedido_id: idUnicoFila,
+          nombre_cliente: datosVenta.nombre,
+          agencia: datosVenta.lugar,
+          agencia_inventario: agenciaActual,
+          correo: datosVenta.correo || 'Sin correo',
+          material_id: item.material_id,
+          descripcion: item.descripcion,
+          cantidad: item.cantidad,
+          precio_total: item.cantidad * item.precio_unitario,
+          codigo_empleado: datosVenta.codigoEmpleado,
+          comprobante_url: comprobanteUrl,
+        });
         if (!respuesta.exito) throw new Error("Fallo al insertar en la base de datos");
       }
 
@@ -272,7 +258,7 @@ export default function Home() {
         await enviarCorreoConfirmacion({
           nombre: datosVenta.nombre,
           correoDestino: datosVenta.correo,
-          bcc: ["vpizarro@cbc.co", "emendivil@cbc.co","ksolar@cbc.co","lapari@cbc.co"], 
+          bcc: ["vpizarro@cbc.co", "emendivil@cbc.co", "ksolar@cbc.co", "lapari@cbc.co"],
           pedidoId: ordenBaseId,
           lugar: datosVenta.lugar,
           total: totalPagar,
@@ -282,7 +268,6 @@ export default function Home() {
       }
 
       mostrarAlerta("¡Pedido Registrado! 🎉", `Tu pedido ${ordenBaseId} fue registrado con éxito. Recibirás un correo de confirmación.`, "exito");
-
       setCarrito([]);
       setDatosVenta({ nombre: '', lugar: '', correo: '', codigoEmpleado: '' });
       setBusquedaVendedor('');
@@ -292,7 +277,6 @@ export default function Home() {
     } catch (error) {
       console.error(error);
       mostrarAlerta("Error al guardar", "Hubo un error al guardar el pedido. Revisa tu conexión e intenta nuevamente.", "error");
-
     } finally {
       setGuardando(false);
     }
@@ -313,22 +297,15 @@ export default function Home() {
       const itemsPedido = await obtenerPedidoPorId(idPedidoModificar);
       if (!itemsPedido || itemsPedido.length === 0) {
         mostrarAlerta("Pedido no encontrado", "No se encontró ningún pedido con ese ID. Verifica el número e intenta nuevamente.", "error");
-
         return;
       }
-
       setItemsPedidoOriginal(itemsPedido);
       setLugarModificado(itemsPedido[0].agencia);
-
       const mapaInicialQuantities: Record<string, number> = {};
-      itemsPedido.forEach(item => {
-        mapaInicialQuantities[item.material_id] = item.cantidad;
-      });
+      itemsPedido.forEach(item => { mapaInicialQuantities[item.material_id] = item.cantidad; });
       setCantidadesModificadasMap(mapaInicialQuantities);
-
       setModalModificar(false);
       setPantalla('modificar');
-
     } catch (error) {
       console.error(error);
       mostrarAlerta("Error de conexión", "Error buscando el pedido. Revisa tu conexión e intenta nuevamente.", "error");
@@ -344,46 +321,26 @@ export default function Home() {
     setCantidadesModificadasMap(prev => {
       const cantidadActual = prev[materialId] || itemOriginal.cantidad;
       const nuevaCantidad = cantidadActual + cambio;
-
       if (nuevaCantidad <= 0) return prev;
 
       if (cambio > 0) {
-        // 1. Validar límite de 4 por producto individual
         if (nuevaCantidad > 4) {
-          setTimeout(() => mostrarAlerta(
-            "Límite por producto 📦",
-            "Solo puedes agregar un máximo de 4 unidades del mismo producto.",
-            "advertencia"
-          ), 0);
+          setTimeout(() => mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto.", "advertencia"), 0);
           return prev;
         }
-
-        // 2. Validar límite global de 4 unidades en total para el pedido
-        const totalUnidadesNueva = Object.entries(prev).reduce(
-          (suma, [mId, cant]) => suma + (mId === materialId ? nuevaCantidad : cant), 
-          0
-        );
+        const totalUnidadesNueva = Object.entries(prev).reduce((suma, [mId, cant]) => suma + (mId === materialId ? nuevaCantidad : cant), 0);
         if (totalUnidadesNueva > 4) {
-          setTimeout(() => mostrarAlerta(
-            "Límite del pedido alcanzado 🛒",
-            "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.",
-            "advertencia"
-          ), 0);
+          setTimeout(() => mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia"), 0);
           return prev;
         }
       }
 
       const maximoPermitido = Number(itemOriginal.stock_actual) + Number(itemOriginal.cantidad);
-
       if (nuevaCantidad > maximoPermitido) {
         setTimeout(() => mostrarAlerta("Límite alcanzado", `Solo hay ${itemOriginal.stock_actual} unidades extras disponibles. El máximo que puedes llevar es ${maximoPermitido} en total.`, "advertencia"), 0);
         return prev;
       }
-
-      return {
-        ...prev,
-        [materialId]: nuevaCantidad
-      };
+      return { ...prev, [materialId]: nuevaCantidad };
     });
   };
 
@@ -393,23 +350,16 @@ export default function Home() {
       return;
     }
     if (itemsPedidoOriginal.length === 0) return;
-
     setGuardando(true);
 
     try {
       let comprobanteUrlFinal = itemsPedidoOriginal[0].comprobante_url;
-
       if (comprobanteModificado) {
         const formData = new FormData();
         formData.append('file', comprobanteModificado);
         formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
         formData.append('folder', 'comprobantes_cbc');
-
-        const uploadRes = await fetch(
-          `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
-          { method: 'POST', body: formData }
-        );
-
+        const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: formData });
         if (!uploadRes.ok) throw new Error("No se pudo subir el nuevo comprobante");
         const uploadData = await uploadRes.json();
         comprobanteUrlFinal = uploadData.secure_url;
@@ -422,7 +372,6 @@ export default function Home() {
         precio_unitario: Number(itemOriginal.precio_unitario)
       }));
 
-      // ✅ VALIDACIÓN: Límite general de 4 unidades en total y por producto para pedido modificado
       const totalUnidadesModificado = itemsToUpdate.reduce((suma, item) => suma + item.cantidad_nueva, 0);
       if (totalUnidadesModificado > 4) {
         mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia");
@@ -437,27 +386,18 @@ export default function Home() {
         }
       }
 
-      const respuesta = await actualizarPedido({
-        pedidoId: idPedidoModificar,
-        lugar: lugarModificado,
-        comprobanteUrl: comprobanteUrlFinal,
-        items: itemsToUpdate
-      });
-
+      const respuesta = await actualizarPedido({ pedidoId: idPedidoModificar, lugar: lugarModificado, comprobanteUrl: comprobanteUrlFinal, items: itemsToUpdate });
       if (!respuesta.exito) throw new Error(respuesta.error);
 
       mostrarAlerta("¡Pedido Actualizado! ✅", `El pedido ${idPedidoModificar} fue actualizado y el inventario reajustado correctamente.`, "exito");
-
       setIdPedidoModificar('');
       setItemsPedidoOriginal([]);
       setCantidadesModificadasMap({});
       setComprobanteModificado(null);
       setPantalla('catalogo');
-
     } catch (error) {
       console.error(error);
       mostrarAlerta("Error al actualizar", "Hubo un error al guardar los cambios en la base de datos. Intenta nuevamente.", "error");
-
     } finally {
       setGuardando(false);
     }
@@ -465,16 +405,9 @@ export default function Home() {
 
   const totalPagar = carrito.reduce((suma, item) => suma + (item.cantidad * item.precio_unitario), 0);
 
-  // DICCIONARIOS DE EMOJIS DINÁMICOS
   const categoryIcons: Record<string, string> = {
-    'Bebidas': '🥤',
-    'Campari': '🥃',
-    'Diageo': '🍷',
-    'La Bodeguita': '🏪',
-    'Nuevos Negocios': '🏢',
-    'Merch': '👕',
-    'Nuna Terra': '🌱',
-    'Otros': '📦'
+    'Bebidas': '🥤', 'Campari': '🥃', 'Diageo': '🍷', 'La Bodeguita': '🏪',
+    'Nuevos Negocios': '🏢', 'Merch': '👕', 'Nuna Terra': '🌱', 'Otros': '📦'
   };
 
   const brandIcons: Record<string, string> = {
@@ -484,93 +417,46 @@ export default function Home() {
     'Pepsi': '🔵', 'Red Bull': '🐂', 'San Carlos': '💧', 'Seven UP': '🍋🟩', 'Smirnoff': '🍸',
     'Triple Kola': '🟡', '220V': '🔋', 'Sky': '🌌', 'Appleton': '🍎', 'Cinzano': '🍷',
     'Riccadonna': '🍾', 'Aperol': '🍊', 'Wild Turkey': '🦃', 'Frangelico': '🌰', 'Bulldog': '🐶',
-    'Grand Marnier': '🍊', 'Espolon': '🌵', 'Merch': '👕', 'Crecer Kids': '🧸', 'More': '🍬',
-    'Pepsico': '🔵'
+    'Grand Marnier': '🍊', 'Espolon': '🌵', 'Merch': '👕', 'Crecer Kids': '🧸', 'More': '🍬', 'Pepsico': '🔵'
   };
 
-  // Extraemos todos los grupos únicos disponibles en la base de datos
   const activeMainCategories = Array.from(new Set(stockReal.map(p => p.grupo || 'Otros'))).filter(Boolean);
 
   const productosFiltrados = stockReal.filter(p => {
     const mainCategory = p.grupo || 'Otros';
     const marcaAgrupada = p.marca || 'Otros';
-    
     const coincideBusqueda = p.descripcion.toLowerCase().includes(busquedaProducto.toLowerCase()) || p.material_id.toLowerCase().includes(busquedaProducto.toLowerCase());
     const coincideCategoria = categoriaFiltro === 'Todos' || mainCategory === categoriaFiltro;
     const coincideMarca = marcaFiltro === 'Todas' || marcaAgrupada === marcaFiltro;
-    
     return coincideBusqueda && coincideCategoria && coincideMarca;
   });
 
+  // ==========================================
+  // VISTA 1: LANDING
+  // ==========================================
   if (!regionSeleccionada && pantalla !== 'modificar') {
     return (
       <main className="min-h-screen overflow-hidden antialiased relative bg-white" style={{ backgroundColor: '#ffffff', colorScheme: 'light' }}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=DM+Sans:wght@400;500;700&display=swap');
-          
           body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; background-color: #ffffff !important; color-scheme: light !important; }
-          
           @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
           @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
           @keyframes gradientMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
           @keyframes floatingCross { 0% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(15deg); } 100% { transform: translateY(0) rotate(0deg); } }
-          
           .hero-content { animation: fadeUp 0.8s ease forwards; opacity: 0; }
           .hero-img { animation: fadeIn 1s ease forwards; opacity: 0; animation-delay: 0.3s; }
-          
-          .gradient-line {
-            height: 6px;
-            width: 100%;
-            background: linear-gradient(90deg, #7b2cbf, #f9c74f, #90be6d, #43aa8b, #f9c74f, #f3722c);
-            background-size: 200% 200%;
-            animation: gradientMove 4s ease infinite;
-            border-radius: 3px;
-            margin-top: 10px;
-          }
-
+          .gradient-line { height: 6px; width: 100%; background: linear-gradient(90deg, #7b2cbf, #f9c74f, #90be6d, #43aa8b, #f9c74f, #f3722c); background-size: 200% 200%; animation: gradientMove 4s ease infinite; border-radius: 3px; margin-top: 10px; }
           .card-region { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
           .card-region:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 15px 30px rgba(0,0,0,0.1) !important; }
-          
           .btn-primary { transition: all 0.3s ease; }
           .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(254, 110, 0, 0.3); }
-
           .btn-secondary { transition: all 0.3s ease; }
           .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(27, 151, 212, 0.2); }
-
-          .floating-cross {
-            position: absolute;
-            font-size: 24px;
-            font-weight: bold;
-            opacity: 0.6;
-            animation: floatingCross 6s ease-in-out infinite;
-          }
-          
-          .fc-orange { color: #fe6e00; }
-          .fc-blue { color: #1b97d4; }
-          .fc-green { color: #7ac142; }
-          .fc-purple { color: #7b2cbf; }
-
-          .top-shape {
-            position: absolute;
-            top: -300px;
-            left: -200px;
-            width: 800px;
-            height: 800px;
-            background: #f4f4f4;
-            border-radius: 50%;
-            z-index: 0;
-          }
-          .bottom-shape {
-            position: absolute;
-            bottom: -250px;
-            left: -100px;
-            width: 600px;
-            height: 600px;
-            background: #f4f4f4;
-            border-radius: 50%;
-            z-index: 0;
-            opacity: 0.7;
-          }
+          .floating-cross { position: absolute; font-size: 24px; font-weight: bold; opacity: 0.6; animation: floatingCross 6s ease-in-out infinite; }
+          .fc-orange { color: #fe6e00; } .fc-blue { color: #1b97d4; } .fc-green { color: #7ac142; } .fc-purple { color: #7b2cbf; }
+          .top-shape { position: absolute; top: -300px; left: -200px; width: 800px; height: 800px; background: #f4f4f4; border-radius: 50%; z-index: 0; }
+          .bottom-shape { position: absolute; bottom: -250px; left: -100px; width: 600px; height: 600px; background: #f4f4f4; border-radius: 50%; z-index: 0; opacity: 0.7; }
         `}</style>
 
         <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
@@ -595,41 +481,39 @@ export default function Home() {
               <span style={{ color: '#fe6e00', display: 'block', whiteSpace: 'nowrap' }}>AL PERSONAL</span>
             </h1>
             <div className="gradient-line" style={{ width: '95%', marginBottom: '20px' }}></div>
-            
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
               <p style={{ margin: 0, fontSize: 'clamp(18px, 4.5vw, 22px)', fontFamily: 'Montserrat, sans-serif' }}>
                 <span style={{ color: '#465a6a', fontWeight: 400 }}>Tu beneficio, </span>
                 <span style={{ color: '#fe6e00', fontWeight: 800 }}>a un clic</span>
               </p>
               <img src="/click.png" alt="clic" style={{ width: 'clamp(24px, 6vw, 32px)', height: 'clamp(24px, 6vw, 32px)', objectFit: 'contain' }} />
-              <p style={{ margin: 0, fontSize: 'clamp(18px, 4.5vw, 22px)', fontFamily: 'Montserrat, sans-serif', color: '#465a6a', fontWeight: 400 }}>
-                de distancia
-              </p>
+              <p style={{ margin: 0, fontSize: 'clamp(18px, 4.5vw, 22px)', fontFamily: 'Montserrat, sans-serif', color: '#465a6a', fontWeight: 400 }}>de distancia</p>
             </div>
 
             {comprasHabilitadas === null ? (
-  <div style={{ height: '52px', width: '320px', background: '#f1f5f9', borderRadius: '8px' }} />
-) : comprasHabilitadas ? (
-  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-    <button onClick={() => setModalRegion(true)} className="btn-primary" style={{ background: '#fe6e00', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(254,110,0,0.2)' }}>
-      <span style={{ fontSize: '22px', fontWeight: 'bold', lineHeight: 1 }}>+</span>
-      NUEVO PEDIDO
-    </button>
-    <button onClick={() => setModalModificar(true)} className="btn-secondary" style={{ background: '#ffffff', border: '2px solid #1b97d4', color: '#1b97d4', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
-      <img src="/modificar.png" alt="Modificar" style={{ width: '18px', height: '18px' }} />
-      MODIFICAR PEDIDO
-    </button>
-  </div>
-) : (
-  <div style={{ background: '#fee2e2', border: '2px solid #fca5a5', borderRadius: '12px', padding: '20px 28px', display: 'flex', alignItems: 'center', gap: '14px', maxWidth: '500px' }}>
-    <span style={{ fontSize: '32px' }}>🔒</span>
-    <div>
-      <p style={{ margin: 0, fontFamily: 'Montserrat, sans-serif', fontWeight: 800, fontSize: '16px', color: '#dc2626' }}>Compras temporalmente deshabilitadas</p>
-      <p style={{ margin: '4px 0 0 0', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', color: '#ef4444' }}>El sistema de pedidos está pausado. Intenta más tarde.</p>
-    </div>
-  </div>
-)}
-</div>
+              <div style={{ height: '52px', width: '320px', background: '#f1f5f9', borderRadius: '8px' }} />
+            ) : comprasHabilitadas ? (
+              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                <button onClick={() => setModalRegion(true)} className="btn-primary" style={{ background: '#fe6e00', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(254,110,0,0.2)' }}>
+                  <span style={{ fontSize: '22px', fontWeight: 'bold', lineHeight: 1 }}>+</span>
+                  NUEVO PEDIDO
+                </button>
+                <button onClick={() => setModalModificar(true)} className="btn-secondary" style={{ background: '#ffffff', border: '2px solid #1b97d4', color: '#1b97d4', borderRadius: '8px', padding: '14px 28px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Montserrat, sans-serif', fontSize: '15px', fontWeight: 700, boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
+                  <img src="/modificar.png" alt="Modificar" style={{ width: '18px', height: '18px' }} />
+                  MODIFICAR PEDIDO
+                </button>
+              </div>
+            ) : (
+              <div style={{ background: '#fee2e2', border: '2px solid #fca5a5', borderRadius: '12px', padding: '20px 28px', display: 'flex', alignItems: 'center', gap: '14px', maxWidth: '500px' }}>
+                <span style={{ fontSize: '32px' }}>🔒</span>
+                <div>
+                  <p style={{ margin: 0, fontFamily: 'Montserrat, sans-serif', fontWeight: 800, fontSize: '16px', color: '#dc2626' }}>Compras temporalmente deshabilitadas</p>
+                  <p style={{ margin: '4px 0 0 0', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', color: '#ef4444' }}>El sistema de pedidos está pausado. Intenta más tarde.</p>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="hero-img" style={{ flex: '1 1 450px', display: 'flex', justifyContent: 'center', position: 'relative' }}>
             <img src="/botellas.png" alt="Botellas CBC" style={{ width: '100%', maxWidth: '550px', objectFit: 'contain', filter: 'drop-shadow(0 25px 35px rgba(0,0,0,0.2))' }} />
           </div>
@@ -656,7 +540,6 @@ export default function Home() {
         {modalRegion && (
           <div onClick={(e) => { if (e.target === e.currentTarget) setModalRegion(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease forwards' }}>
             <div style={{ background: 'linear-gradient(135deg, #0d1b3e, #0a1628)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '24px', padding: '40px', width: '100%', maxWidth: '440px', boxShadow: '0 0 80px rgba(6,182,212,0.15)' }}>
-
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
                 <div>
                   <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#67e8f9', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: 'DM Sans, sans-serif' }}>Realizar Pedido</p>
@@ -664,21 +547,15 @@ export default function Home() {
                 </div>
                 <button onClick={() => setModalRegion(false)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '50%', width: '36px', height: '36px', color: '#ffffff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
               </div>
-
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <button onClick={() => seleccionarRegion('Lima')} className="modal-btn" style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', border: 'none', borderRadius: '16px', padding: '20px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%' }}>
+                <button onClick={() => seleccionarRegion('Lima')} style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', border: 'none', borderRadius: '16px', padding: '20px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%' }}>
                   <span style={{ fontSize: '28px', flexShrink: 0 }}>📍</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Región Lima</p>
-                  </div>
+                  <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Región Lima</p></div>
                   <span style={{ opacity: 0.6, fontSize: '18px' }}>→</span>
                 </button>
-
-                <button onClick={() => seleccionarRegion('Norte')} className="modal-btn" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '20px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%' }}>
+                <button onClick={() => seleccionarRegion('Norte')} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '20px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%' }}>
                   <span style={{ fontSize: '28px', flexShrink: 0 }}>📍</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Región Norte</p>
-                  </div>
+                  <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Región Norte</p></div>
                   <span style={{ opacity: 0.6, fontSize: '18px' }}>→</span>
                 </button>
               </div>
@@ -689,7 +566,6 @@ export default function Home() {
         {modalModificar && (
           <div onClick={(e) => { if (e.target === e.currentTarget) setModalModificar(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease forwards' }}>
             <div style={{ background: 'linear-gradient(135deg, #0d1b3e, #0a1628)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '24px', padding: '40px', width: '100%', maxWidth: '440px', boxShadow: '0 0 80px rgba(6,182,212,0.15)' }}>
-
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
                 <div>
                   <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#a855f7', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: 'DM Sans, sans-serif' }}>Modificar Pedido</p>
@@ -697,89 +573,56 @@ export default function Home() {
                 </div>
                 <button onClick={() => setModalModificar(false)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '50%', width: '36px', height: '36px', color: '#ffffff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
               </div>
-
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div>
                   <label style={{ display: 'block', color: 'rgba(255,255,255,0.7)', fontSize: '13px', marginBottom: '8px', fontFamily: 'DM Sans, sans-serif' }}>ID del Pedido</label>
-                  <input
-                    type="text"
-                    value={idPedidoModificar}
-                    onChange={(e) => setIdPedidoModificar(e.target.value)}
-                    placeholder="Ej: PED-123456"
-                    style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '15px', fontFamily: 'DM Sans, sans-serif', outline: 'none', boxSizing: 'border-box' }}
-                  />
+                  <input type="text" value={idPedidoModificar} onChange={(e) => setIdPedidoModificar(e.target.value)} placeholder="Ej: PED-123456" style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '15px', fontFamily: 'DM Sans, sans-serif', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
-
-                <button onClick={buscarPedidoParaModificar} disabled={buscandoPedido} className="modal-btn" style={{ background: 'linear-gradient(135deg, #a855f7, #9333ea)', border: 'none', borderRadius: '14px', padding: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, color: '#ffffff', width: '100%' }}>
+                <button onClick={buscarPedidoParaModificar} disabled={buscandoPedido} style={{ background: 'linear-gradient(135deg, #a855f7, #9333ea)', border: 'none', borderRadius: '14px', padding: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, color: '#ffffff', width: '100%' }}>
                   {buscandoPedido ? 'Buscando...' : 'Buscar Pedido 🔍'}
                 </button>
               </div>
             </div>
           </div>
         )}
-      {modalAgencia && (
-  <div
-    onClick={(e) => { if (e.target === e.currentTarget) setModalAgencia(false); }}
-    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease forwards' }}
-  >
-    <div style={{ background: 'linear-gradient(135deg, #0d1b3e, #0a1628)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '440px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 0 80px rgba(6,182,212,0.15)' }}>
 
-      {/* Header fijo */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexShrink: 0 }}>
-        <div>
-          <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#67e8f9', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: 'DM Sans, sans-serif' }}>Región {regionPendiente}</p>
-          <h2 style={{ margin: '6px 0 0 0', fontSize: '22px', fontWeight: 800, color: '#ffffff', fontFamily: 'Syne, sans-serif' }}>¿A qué agencia perteneces?</h2>
-        </div>
-        <button
-          onClick={() => setModalAgencia(false)}
-          style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '50%', width: '36px', height: '36px', color: '#ffffff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-        >✕</button>
-      </div>
-
-      {/* Lista con scroll */}
-      <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
-        {agenciasPorRegion.length === 0 ? (
-          <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontFamily: 'DM Sans, sans-serif' }}>
-            Cargando agencias...
-          </p>
-        ) : (
-          agenciasPorRegion.map((agencia, index) => (
-            <button
-              key={agencia}
-              onClick={() => { setModalAgencia(false); cargarDatos(regionPendiente!, agencia); }}
-              className="modal-btn"
-              style={{
-                background: index === 0 ? 'linear-gradient(135deg, #06b6d4, #0891b2)' : 'rgba(255,255,255,0.06)',
-                border: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.15)',
-                borderRadius: '14px', padding: '16px 20px', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '14px',
-                fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%',
-                flexShrink: 0
-              }}
-            >
-              <span style={{ fontSize: '22px', flexShrink: 0 }}>🏢</span>
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>
-                  {agencia === 'COMAS' ? 'COMAS (LIMA NORTE)'
-                  : agencia === 'VES' ? 'VES (CROMO, LIMA SUR)'
-                  : agencia === 'HUACHIPA' ? 'HUACHIPA (LA MOLINA, EEFF)'
-                  : agencia === 'SULLANA' ? 'SULLANA (PIURA, TALARA)'
-                  : agencia}
-                </p>
+        {modalAgencia && (
+          <div onClick={(e) => { if (e.target === e.currentTarget) setModalAgencia(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease forwards' }}>
+            <div style={{ background: 'linear-gradient(135deg, #0d1b3e, #0a1628)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '440px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 0 80px rgba(6,182,212,0.15)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexShrink: 0 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#67e8f9', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: 'DM Sans, sans-serif' }}>Región {regionPendiente}</p>
+                  <h2 style={{ margin: '6px 0 0 0', fontSize: '22px', fontWeight: 800, color: '#ffffff', fontFamily: 'Syne, sans-serif' }}>¿A qué agencia perteneces?</h2>
+                </div>
+                <button onClick={() => setModalAgencia(false)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '50%', width: '36px', height: '36px', color: '#ffffff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
               </div>
-              <span style={{ opacity: 0.6, fontSize: '16px' }}>→</span>
-            </button>
-          ))
+              <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
+                {agenciasPorRegion.length === 0 ? (
+                  <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontFamily: 'DM Sans, sans-serif' }}>Cargando agencias...</p>
+                ) : (
+                  agenciasPorRegion.map((agencia, index) => (
+                    <button key={agencia} onClick={() => { setModalAgencia(false); cargarDatos(regionPendiente!, agencia); }} style={{ background: index === 0 ? 'linear-gradient(135deg, #06b6d4, #0891b2)' : 'rgba(255,255,255,0.06)', border: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.15)', borderRadius: '14px', padding: '16px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px', fontFamily: 'Syne, sans-serif', color: '#ffffff', textAlign: 'left', width: '100%', flexShrink: 0 }}>
+                      <span style={{ fontSize: '22px', flexShrink: 0 }}>🏢</span>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>
+                          {agencia === 'COMAS' ? 'COMAS (LIMA NORTE)' : agencia === 'VES' ? 'VES (CROMO, LIMA SUR)' : agencia === 'HUACHIPA' ? 'HUACHIPA (LA MOLINA, EEFF)' : agencia === 'SULLANA' ? 'SULLANA (PIURA, TALARA)' : agencia}
+                        </p>
+                      </div>
+                      <span style={{ opacity: 0.6, fontSize: '16px' }}>→</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         )}
-      </div>
-    </div>
-  </div>
-)}
       </main>
     );
   }
 
+  // ==========================================
   // VISTA CARGANDO
+  // ==========================================
   if (cargando) {
     return (
       <main className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -790,7 +633,7 @@ export default function Home() {
   }
 
   // ==========================================
-  // VISTA 3: INTERFAZ MODIFICAR PEDIDOEXISTENTE
+  // VISTA MODIFICAR PEDIDO
   // ==========================================
   if (pantalla === 'modificar') {
     return (
@@ -804,7 +647,7 @@ export default function Home() {
           .dark-label { display: block; color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-family: 'DM Sans', sans-serif; }
           .dark-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 32px; backdrop-filter: blur(10px); }
           .btn-primary-purple { background: linear-gradient(135deg, #a855f7, #9333ea); border: none; border-radius: 14px; padding: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: #ffffff; width: 100%; transition: all 0.2s; box-shadow: 0 4px 15px rgba(168,85,247,0.3); }
-          .btn-primary-purple:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 6px 20px rgba(168,85,247,0.4); }
+          .btn-primary-purple:hover { transform: translateY(-2px); filter: brightness(1.1); }
           .btn-primary-purple:disabled { opacity: 0.7; cursor: not-allowed; }
           .quantity-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: #fff; font-weight: 800; cursor: pointer; transition: all 0.2s; font-family: 'Syne', sans-serif; }
           .quantity-btn:hover { background: rgba(255,255,255,0.1); border-color: #a855f7; }
@@ -826,7 +669,6 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="dark-card flex flex-col h-full">
               <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 700, marginBottom: '24px', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>Detalle del Pedido y Lugar</h2>
-
               <div className="mb-8">
                 <label className="dark-label">Lugar de Entrega (Editable)</label>
                 <select value={lugarModificado} onChange={(e) => setLugarModificado(e.target.value)} className="dark-input" style={{ appearance: 'none' }}>
@@ -836,14 +678,11 @@ export default function Home() {
                   <option value="Cromo (San isidro)" style={{ color: '#000' }}>Cromo (San isidro)</option>
                 </select>
               </div>
-
               <div className="flex-1 overflow-y-auto pr-2" style={{ maxHeight: '400px' }}>
                 <div className="flex flex-col gap-6">
                   {itemsPedidoOriginal.map(item => {
                     const cantidadModificada = cantidadesModificadasMap[item.material_id] || item.cantidad;
-                    // Límite visual: Lo que se pidió + lo que está libre ahora mismo en BD
                     const maximoPermitido = Number(item.stock_actual) + Number(item.cantidad);
-
                     return (
                       <div key={item.material_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '16px' }}>
                         <div style={{ flex: 1 }}>
@@ -853,18 +692,13 @@ export default function Home() {
                             <span style={{ fontSize: '13px', fontWeight: 700, color: '#06b6d4' }}>S/ {Number(item.precio_unitario).toFixed(2)} und</span>
                           </div>
                         </div>
-
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', padding: '4px' }}>
                             <button onClick={() => actualizarCantidadPedidoExistente(item.material_id, -1)} className="quantity-btn" disabled={cantidadModificada <= 1}>-</button>
                             <span style={{ width: '40px', textAlign: 'center', fontSize: '18px', fontWeight: 800, color: '#fff', fontFamily: 'Syne, sans-serif' }}>{cantidadModificada}</span>
-                            {/* El botão "+" se bloquea si se llega al límite */}
                             <button onClick={() => actualizarCantidadPedidoExistente(item.material_id, 1)} className="quantity-btn" disabled={cantidadModificada >= maximoPermitido}>+</button>
                           </div>
-                          {/* Texto del Límite de Stock */}
-                          <span style={{ fontSize: '11px', fontWeight: 600, color: cantidadModificada >= maximoPermitido ? '#fca5a5' : 'rgba(255,255,255,0.4)', fontFamily: 'DM Sans, sans-serif' }}>
-                            Límite total: {maximoPermitido}
-                          </span>
+                          <span style={{ fontSize: '11px', fontWeight: 600, color: cantidadModificada >= maximoPermitido ? '#fca5a5' : 'rgba(255,255,255,0.4)', fontFamily: 'DM Sans, sans-serif' }}>Límite total: {maximoPermitido}</span>
                         </div>
                       </div>
                     );
@@ -875,55 +709,43 @@ export default function Home() {
 
             <div className="dark-card flex flex-col gap-5 relative h-full">
               <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 700, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '10px' }}>Estado y Comprobante</h2>
-
               <div>
                 <label className="dark-label">Estado del Pedido (No Modificable)</label>
-                <input
-                  type="text"
-                  value={itemsPedidoOriginal[0]?.estado || ''}
-                  readOnly
-                  className="dark-input"
-                  style={{ background: 'rgba(255,255,255,0.02)', color: 'rgba(255,255,255,0.4)', cursor: 'not-allowed', fontWeight: 700 }}
-                />
+                <input type="text" value={itemsPedidoOriginal[0]?.estado || ''} readOnly className="dark-input" style={{ background: 'rgba(255,255,255,0.02)', color: 'rgba(255,255,255,0.4)', cursor: 'not-allowed', fontWeight: 700 }} />
               </div>
-
               <div className="mt-2 flex-1 flex flex-col">
                 <label className="dark-label mb-2">Comprobante de Pago Actual / Nuevo</label>
-
                 {itemsPedidoOriginal[0]?.comprobante_url && itemsPedidoOriginal[0].comprobante_url !== 'Sin comprobante' && !comprobanteModificado && (
                   <div className="mb-4">
                     <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '5px' }}>Comprobante actual:</p>
                     <img src={itemsPedidoOriginal[0].comprobante_url} alt="Comprobante Actual" style={{ maxWidth: '100%', maxHeight: '120px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }} />
                   </div>
                 )}
-
                 <label className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer block flex-1 flex flex-col justify-center items-center transition-all hover:bg-white/5 ${comprobanteModificado ? 'border-green-400 bg-green-950/20' : 'border-slate-500'}`}>
                   {comprobanteModificado ? (<><span className="text-3xl mb-1 block">✅</span><p className="text-sm text-green-300 font-bold truncate px-4">{comprobanteModificado.name}</p></>) : (<><span className="text-2xl mb-1 block">📸</span><p className="text-sm text-slate-300 font-bold">Subir Transferencia Nueva (Opcional)</p></>)}
                   <input type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files && e.target.files[0]) setComprobanteModificado(e.target.files[0]); }} />
                 </label>
               </div>
-
               <button onClick={guardarCambiosPedido} disabled={guardando} className="btn-primary-purple flex items-center justify-center gap-2">
                 {guardando ? 'Sincronizando celdas y stock...' : 'Guardar y Reajustar Inventario ✓'}
               </button>
             </div>
           </div>
         </div>
-        <ModalAlerta alerta={alerta} onClose={() => setAlerta(null)} />
+        <ModalAlerta alerta={alerta} onClose={() => alerta?.onClose ? alerta.onClose() : setAlerta(null)} />
       </main>
     );
   }
 
+  // ==========================================
   // VISTA CHECKOUT
+  // ==========================================
   if (pantalla === 'checkout') {
     return (
       <main className="min-h-screen bg-slate-50 py-10 px-4">
         <div className="max-w-5xl mx-auto">
-          <button onClick={() => setPantalla('catalogo')} className="mb-6 text-slate-500 hover:text-slate-800 font-bold transition-colors">
-            ← Volver al catálogo
-          </button>
+          <button onClick={() => setPantalla('catalogo')} className="mb-6 text-slate-500 hover:text-slate-800 font-bold transition-colors">← Volver al catálogo</button>
           <h1 className="text-3xl font-black text-slate-800 mb-8">Registro de Venta</h1>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-full">
               <h2 className="font-bold text-lg mb-4 text-slate-800 border-b pb-2">Detalle del Pedido</h2>
@@ -934,9 +756,7 @@ export default function Home() {
                       <p className="font-bold text-slate-800 text-sm mb-1 leading-tight">{item.descripcion}</p>
                       <p className="text-xs font-mono text-slate-400 mb-2">ID: {item.material_id}</p>
                       <div className="flex items-center gap-2">
-                        <span className="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md text-xs border border-blue-100">
-  {item.cantidad} {stockReal.find(p => p.material_id === item.material_id)?.categoria === 'Bebidas' ? 'Pqt' : 'und'}
-</span>
+                        <span className="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md text-xs border border-blue-100">{item.cantidad} {stockReal.find(p => p.material_id === item.material_id)?.categoria === 'Bebidas' ? 'Pqt' : 'und'}</span>
                         <span className="text-slate-400 text-xs">x</span>
                         <span className="text-slate-700 font-bold text-sm bg-slate-100 px-2 py-1 rounded-md border border-slate-200">S/ {item.precio_unitario.toFixed(2)}</span>
                       </div>
@@ -953,7 +773,6 @@ export default function Home() {
 
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col gap-5 relative">
               <h2 className="font-bold text-lg text-slate-800 border-b pb-2 mb-2">Datos del Vendedor / Cliente</h2>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2 relative">
                   <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Nombre Completo (Obligatorio)</label>
@@ -977,32 +796,27 @@ export default function Home() {
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Lugar (Obligatorio)</label>
                   <select name="lugar" value={datosVenta.lugar} onChange={manejarCambioInput} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800">
-  <option value="">Seleccione un lugar...</option>
-  {regionSeleccionada === 'Lima' && (
-    <>
-      <option value="Ag. Chincha">Ag. Chincha</option>
-      <option value="Ag. Ica">Ag. Ica</option>
-      <option value="Ag. Huacho">Ag. Huacho</option>
-      <option value="Ag. Huachipa">Ag. Huachipa</option>
-      <option value="Ag. Comas">Ag. Comas</option>
-      <option value="Ag. Ves">Ag. Ves</option>
-      <option value="Sala de ventas Norte (Callao)">Sala de ventas Norte (Callao)</option>
-      <option value="Sala de ventas Sur (Chorrillos)">Sala de ventas Sur (Chorrillos)</option>
-      <option value="Sala de ventas Este (La Molina)">Sala de ventas Este (La Molina)</option>
-      <option value="Cromo (San isidro)">Cromo (San isidro)</option>
-      
-    </>
-  )}
-  {regionSeleccionada === 'Norte' && (
-    <>
-      <option value="Ag. Trujillo">Ag. Trujillo</option>
-      <option value="Ag. Piura">Ag. Piura</option>
-      <option value="Ag. Talara">Ag. Talara</option>
-      <option value="Ag. Tumbes">Ag. Tumbes</option>
-      <option value="Ag. Sullana">Ag. Sullana</option>
-    </>
-  )}
-</select>
+                    <option value="">Seleccione un lugar...</option>
+                    {regionSeleccionada === 'Lima' && (<>
+                      <option value="Ag. Chincha">Ag. Chincha</option>
+                      <option value="Ag. Ica">Ag. Ica</option>
+                      <option value="Ag. Huacho">Ag. Huacho</option>
+                      <option value="Ag. Huachipa">Ag. Huachipa</option>
+                      <option value="Ag. Comas">Ag. Comas</option>
+                      <option value="Ag. Ves">Ag. Ves</option>
+                      <option value="Sala de ventas Norte (Callao)">Sala de ventas Norte (Callao)</option>
+                      <option value="Sala de ventas Sur (Chorrillos)">Sala de ventas Sur (Chorrillos)</option>
+                      <option value="Sala de ventas Este (La Molina)">Sala de ventas Este (La Molina)</option>
+                      <option value="Cromo (San isidro)">Cromo (San isidro)</option>
+                    </>)}
+                    {regionSeleccionada === 'Norte' && (<>
+                      <option value="Ag. Trujillo">Ag. Trujillo</option>
+                      <option value="Ag. Piura">Ag. Piura</option>
+                      <option value="Ag. Talara">Ag. Talara</option>
+                      <option value="Ag. Tumbes">Ag. Tumbes</option>
+                      <option value="Ag. Sullana">Ag. Sullana</option>
+                    </>)}
+                  </select>
                 </div>
 
                 <div>
@@ -1042,7 +856,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <ModalAlerta alerta={alerta} onClose={() => setAlerta(null)} />
+        <ModalAlerta alerta={alerta} onClose={() => alerta?.onClose ? alerta.onClose() : setAlerta(null)} />
       </main>
     );
   }
@@ -1052,7 +866,6 @@ export default function Home() {
   // ==========================================
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
-
       <header className="bg-white shadow-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -1062,7 +875,12 @@ export default function Home() {
               <p className="text-sm text-blue-600 font-semibold">📍 Región {regionSeleccionada}</p>
             </div>
           </div>
-          <button onClick={() => setMostrarCarrito(true)} className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 hover:shadow-md ${totalPagar > 0 ? 'bg-green-100 text-green-800 scale-105 shadow-sm' : 'bg-blue-100 text-blue-800'}`}>
+          <button onClick={() => {
+            if (carrito.length === 0) return;
+            setBusquedaVendedor('');
+            setDatosVenta(prev => ({ ...prev, nombre: '', codigoEmpleado: '' }));
+            setModalIdentificacion(true);
+          }} className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 hover:shadow-md ${totalPagar > 0 ? 'bg-green-100 text-green-800 scale-105 shadow-sm' : 'bg-blue-100 text-blue-800'}`}>
             <span>🛒</span> <span>S/ {totalPagar.toFixed(2)}</span>
           </button>
         </div>
@@ -1070,25 +888,17 @@ export default function Home() {
 
       <div style={{ background: '#ffffff', borderBottom: '1px solid #e2e8f0', padding: '14px 0', position: 'sticky', top: '80px', zIndex: 30, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
         <div className="max-w-7xl mx-auto px-4" style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={() => { setCategoriaFiltro('Todos'); setMarcaFiltro('Todas'); }} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 700, transition: 'all 0.2s', background: categoriaFiltro === 'Todos' ? '#0f172a' : '#f1f5f9', color: categoriaFiltro === 'Todos' ? '#ffffff' : '#64748b', boxShadow: categoriaFiltro === 'Todos' ? '0 2px 8px rgba(0,0,0,0.15)' : 'none' }}>
-              🏪 Todos
-            </button>
+            <button onClick={() => { setCategoriaFiltro('Todos'); setMarcaFiltro('Todas'); }} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 700, transition: 'all 0.2s', background: categoriaFiltro === 'Todos' ? '#0f172a' : '#f1f5f9', color: categoriaFiltro === 'Todos' ? '#ffffff' : '#64748b', boxShadow: categoriaFiltro === 'Todos' ? '0 2px 8px rgba(0,0,0,0.15)' : 'none' }}>🏪 Todos</button>
             {activeMainCategories.map(cat => (
               <button key={cat} onClick={() => { setCategoriaFiltro(cat); setMarcaFiltro('Todas'); }} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 700, transition: 'all 0.2s', background: categoriaFiltro === cat ? '#0f172a' : '#f1f5f9', color: categoriaFiltro === cat ? '#ffffff' : '#64748b', boxShadow: categoriaFiltro === cat ? '0 2px 8px rgba(0,0,0,0.15)' : 'none' }}>
                 {categoryIcons[cat] || '📦'} {cat}
               </button>
             ))}
           </div>
-
           <div style={{ flex: 1, minWidth: '220px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {categoriaFiltro !== 'Todos' && (
-              <select 
-                value={marcaFiltro} 
-                onChange={(e) => setMarcaFiltro(e.target.value)}
-                style={{ padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', background: '#f8fafc', fontWeight: 600, color: '#475569', minWidth: '150px' }}
-              >
+              <select value={marcaFiltro} onChange={(e) => setMarcaFiltro(e.target.value)} style={{ padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', background: '#f8fafc', fontWeight: 600, color: '#475569', minWidth: '150px' }}>
                 <option value="Todas">Todas las marcas</option>
                 {Array.from(new Set(stockReal.filter(p => (p.grupo || 'Otros') === categoriaFiltro).map(p => p.marca || 'Otros'))).sort().map(m => (
                   <option key={m} value={m}>{m}</option>
@@ -1098,13 +908,10 @@ export default function Home() {
             <div style={{ flex: 1, minWidth: '220px', position: 'relative' }}>
               <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '15px', pointerEvents: 'none' }}>🔍</span>
               <input type="text" value={busquedaProducto} onChange={e => setBusquedaProducto(e.target.value)} placeholder="Buscar por nombre o código de producto..." style={{ width: '100%', padding: '10px 40px 10px 38px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', background: '#f8fafc', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-              {busquedaProducto && (
-                <button onClick={() => setBusquedaProducto('')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '16px', padding: 0 }}>✕</button>
-              )}
+              {busquedaProducto && (<button onClick={() => setBusquedaProducto('')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '16px', padding: 0 }}>✕</button>)}
             </div>
           </div>
         </div>
-
         {busquedaProducto && (
           <div className="max-w-7xl mx-auto px-4" style={{ marginTop: '8px' }}>
             <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
@@ -1118,22 +925,17 @@ export default function Home() {
         {activeMainCategories.filter(cat => categoriaFiltro === 'Todos' || categoriaFiltro === cat).map(mainCat => {
           const prodsMain = productosFiltrados.filter(p => (p.grupo || 'Otros') === mainCat);
           if (prodsMain.length === 0) return null;
-
           const marcasDeMainCat = Array.from(new Set(prodsMain.map((p) => p.marca || 'Otros'))).sort((a, b) => {
             const countA = prodsMain.filter((p) => (p.marca || 'Otros') === a).length;
             const countB = prodsMain.filter((p) => (p.marca || 'Otros') === b).length;
             return countB - countA;
           });
-
           return (
             <div key={mainCat} className="mb-14">
               <h1 className="text-3xl font-black text-slate-800 mb-8 border-b-2 border-slate-200 pb-4 uppercase tracking-widest flex items-center gap-3">
-                <span className="bg-slate-800 text-white p-2 rounded-xl text-xl shadow-md">
-                  {categoryIcons[mainCat] || '📦'}
-                </span>
+                <span className="bg-slate-800 text-white p-2 rounded-xl text-xl shadow-md">{categoryIcons[mainCat] || '📦'}</span>
                 {mainCat}
               </h1>
-
               {marcasDeMainCat.map((marca) => {
                 const prodsMarca = prodsMain.filter((p) => (p.marca || 'Otros') === marca);
                 const icon = brandIcons[marca] || '📦';
@@ -1151,24 +953,101 @@ export default function Home() {
             </div>
           );
         })}
-
         {productosFiltrados.length === 0 && (
           <div className="text-center py-20">
             <p className="text-6xl mb-4">🔍</p>
             <p className="text-xl font-bold text-slate-600 mb-2">No se encontraron productos</p>
             <p className="text-slate-400 mb-6">Intenta con otro nombre, código o categoría</p>
-            <button onClick={() => { setBusquedaProducto(''); setCategoriaFiltro('Todos'); }} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors">
-              Limpiar filtros
-            </button>
+            <button onClick={() => { setBusquedaProducto(''); setCategoriaFiltro('Todos'); }} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors">Limpiar filtros</button>
           </div>
         )}
       </div>
 
+      {/* MODAL IDENTIFICACIÓN */}
+      {modalIdentificacion && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full sm:w-[480px] rounded-3xl shadow-2xl p-8">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Antes de continuar</p>
+                <h3 className="font-black text-2xl text-slate-800">¿Quién realiza el pedido?</h3>
+              </div>
+              <button onClick={() => setModalIdentificacion(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-500 w-9 h-9 rounded-full font-bold flex items-center justify-center transition-colors">✕</button>
+            </div>
+
+            <div className="relative mb-6">
+              <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Nombre Completo (Obligatorio)</label>
+              <input type="text" value={busquedaVendedor} onFocus={() => setMostrarSugerencias(true)} onChange={(e) => { setBusquedaVendedor(e.target.value); setMostrarSugerencias(true); setDatosVenta(prev => ({ ...prev, nombre: '', codigoEmpleado: '' })); }} placeholder="Escribe tu nombre para buscar..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-400 font-medium text-slate-800" />
+              {datosVenta.nombre && (<span className="absolute right-3 top-10 text-green-500 font-bold text-sm bg-white px-2 py-1 rounded">✓ Confirmado</span>)}
+              {mostrarSugerencias && busquedaVendedor.length > 0 && !datosVenta.nombre && (
+                <ul className="absolute z-50 w-full bg-white border border-slate-200 mt-1 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                  {vendedoresBD.filter(v => v.nombre_completo.toLowerCase().includes(busquedaVendedor.toLowerCase())).slice(0, 15).map(v => (
+                    <li key={v.codigo_empleado} onClick={() => { setBusquedaVendedor(v.nombre_completo); setDatosVenta(prev => ({ ...prev, nombre: v.nombre_completo, codigoEmpleado: v.codigo_empleado })); setMostrarSugerencias(false); }} className="px-4 py-3 hover:bg-orange-50 cursor-pointer border-b border-slate-100 last:border-0">
+                      <div className="font-bold text-slate-700">{v.nombre_completo}</div>
+                      <div className="text-xs text-slate-500">Cód: {v.codigo_empleado}</div>
+                    </li>
+                  ))}
+                  {vendedoresBD.filter(v => v.nombre_completo.toLowerCase().includes(busquedaVendedor.toLowerCase())).length === 0 && (
+                    <li className="px-4 py-3 text-slate-500 text-sm italic">No se encontraron vendedores.</li>
+                  )}
+                </ul>
+              )}
+            </div>
+
+            {datosVenta.codigoEmpleado && (
+              <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Código Cadastro</span>
+                <span className="font-black text-blue-600 text-lg">{datosVenta.codigoEmpleado}</span>
+              </div>
+            )}
+
+            <button
+              disabled={!datosVenta.nombre || !datosVenta.codigoEmpleado}
+              onClick={async () => {
+                const tieneBebidas = carrito.some(item =>
+                  stockReal.find(p => p.material_id === item.material_id)?.categoria === 'Bebidas'
+                );
+
+                if (tieneBebidas) {
+                  const verificacion = await verificarLimiteGlobalBebidas(datosVenta.codigoEmpleado);
+                  if (!verificacion.permitido) {
+                    setModalIdentificacion(false);
+                    setAlerta({
+                      titulo: "Límite de Bebidas Alcanzado 🥤",
+                      mensaje: verificacion.mensaje || '',
+                      tipo: 'advertencia',
+                      onClose: () => {
+                        setAlerta(null);
+                        setRegionSeleccionada(null);
+                        setPantalla('catalogo');
+                        setCarrito([]);
+                      }
+                    });
+                    return;
+                  }
+                }
+
+                setModalIdentificacion(false);
+                setMostrarCarrito(true);
+              }}
+              style={{ background: datosVenta.nombre ? '#fe6e00' : '#e2e8f0' }}
+              className="w-full py-4 rounded-xl font-black text-white text-lg transition-all disabled:cursor-not-allowed disabled:text-slate-400"
+            >
+              {datosVenta.nombre ? 'Ver mi Pedido →' : 'Selecciona tu nombre para continuar'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CARRITO */}
       {mostrarCarrito && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full sm:w-[500px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[80vh]">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-3xl">
-              <h3 className="font-black text-xl text-slate-800">🛒 Tu Pedido</h3>
+              <div>
+                <h3 className="font-black text-xl text-slate-800">🛒 Tu Pedido</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{datosVenta.nombre}</p>
+              </div>
               <button onClick={() => setMostrarCarrito(false)} className="bg-slate-200 hover:bg-slate-300 text-slate-600 w-8 h-8 rounded-full font-bold flex items-center justify-center">✕</button>
             </div>
             <div className="p-6 overflow-y-auto flex-1">
@@ -1181,9 +1060,7 @@ export default function Home() {
                       <div className="flex-1 pr-4">
                         <p className="font-bold text-slate-800 text-sm mb-1">{item.descripcion}</p>
                         <div className="flex items-center gap-2">
-                          <span className="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md text-xs">
-  {item.cantidad} {stockReal.find(p => p.material_id === item.material_id)?.categoria === 'Bebidas' ? 'Pqt' : 'und'}
-</span>
+                          <span className="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md text-xs">{item.cantidad} {stockReal.find(p => p.material_id === item.material_id)?.categoria === 'Bebidas' ? 'Pqt' : 'und'}</span>
                           <span className="text-slate-400 text-xs">x</span>
                           <span className="text-slate-700 font-bold text-sm">S/ {item.precio_unitario.toFixed(2)}</span>
                         </div>
@@ -1206,72 +1083,42 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* ✅ MODAL ALERTA INLINE con onClose */}
       {alerta && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease' }}>
           <div style={{ background: '#ffffff', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '420px', boxShadow: '0 25px 60px rgba(0,0,0,0.2)', textAlign: 'center' }}>
-            <div style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px',
-              background: alerta.tipo === 'exito' ? '#dcfce7' : alerta.tipo === 'advertencia' ? '#fef9c3' : '#fee2e2'
-            }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', background: alerta.tipo === 'exito' ? '#dcfce7' : alerta.tipo === 'advertencia' ? '#fef9c3' : '#fee2e2' }}>
               {alerta.tipo === 'exito' ? '✅' : alerta.tipo === 'advertencia' ? '⚠️' : '❌'}
             </div>
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: 800, color: '#0f172a', fontFamily: 'Syne, sans-serif' }}>
-              {alerta.titulo}
-            </h3>
-            <p style={{ margin: '0 0 28px 0', fontSize: '14px', color: '#64748b', lineHeight: 1.7, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'pre-line' }}>
-              {alerta.mensaje}
-            </p>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: 800, color: '#0f172a', fontFamily: 'Syne, sans-serif' }}>{alerta.titulo}</h3>
+            <p style={{ margin: '0 0 28px 0', fontSize: '14px', color: '#64748b', lineHeight: 1.7, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'pre-line' }}>{alerta.mensaje}</p>
             <button
-              onClick={() => setAlerta(null)}
-              style={{
-                width: '100%', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer',
-                fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, color: '#ffffff',
-                background: alerta.tipo === 'exito' ? 'linear-gradient(135deg, #22c55e, #16a34a)' :
-                            alerta.tipo === 'advertencia' ? 'linear-gradient(135deg, #f59e0b, #d97706)' :
-                            'linear-gradient(135deg, #ef4444, #dc2626)',
-                boxShadow: alerta.tipo === 'exito' ? '0 4px 15px rgba(34,197,94,0.3)' :
-                           alerta.tipo === 'advertencia' ? '0 4px 15px rgba(245,158,11,0.3)' :
-                           '0 4px 15px rgba(239,68,68,0.3)',
-                transition: 'all 0.2s'
-              }}
+              onClick={() => { alerta?.onClose ? alerta.onClose() : setAlerta(null); }}
+              style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, color: '#ffffff', background: alerta.tipo === 'exito' ? 'linear-gradient(135deg, #22c55e, #16a34a)' : alerta.tipo === 'advertencia' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: alerta.tipo === 'exito' ? '0 4px 15px rgba(34,197,94,0.3)' : alerta.tipo === 'advertencia' ? '0 4px 15px rgba(245,158,11,0.3)' : '0 4px 15px rgba(239,68,68,0.3)', transition: 'all 0.2s' }}
             >
               Entendido
             </button>
           </div>
         </div>
       )}
-      <ModalAlerta alerta={alerta} onClose={() => setAlerta(null)} />
     </main>
   );
 }
+
 function ModalAlerta({ alerta, onClose }: { alerta: any, onClose: () => void }) {
   if (!alerta) return null;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn 0.2s ease' }}>
       <div style={{ background: '#ffffff', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '420px', boxShadow: '0 25px 60px rgba(0,0,0,0.2)', textAlign: 'center' }}>
-        <div style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px',
-          background: alerta.tipo === 'exito' ? '#dcfce7' : alerta.tipo === 'advertencia' ? '#fef9c3' : '#fee2e2'
-        }}>
+        <div style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', background: alerta.tipo === 'exito' ? '#dcfce7' : alerta.tipo === 'advertencia' ? '#fef9c3' : '#fee2e2' }}>
           {alerta.tipo === 'exito' ? '✅' : alerta.tipo === 'advertencia' ? '⚠️' : '❌'}
         </div>
-        <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: 800, color: '#0f172a', fontFamily: 'Syne, sans-serif' }}>
-          {alerta.titulo}
-        </h3>
-        <p style={{ margin: '0 0 28px 0', fontSize: '14px', color: '#64748b', lineHeight: 1.7, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'pre-line' }}>
-          {alerta.mensaje}
-        </p>
+        <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: 800, color: '#0f172a', fontFamily: 'Syne, sans-serif' }}>{alerta.titulo}</h3>
+        <p style={{ margin: '0 0 28px 0', fontSize: '14px', color: '#64748b', lineHeight: 1.7, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'pre-line' }}>{alerta.mensaje}</p>
         <button
-          onClick={onClose}
-          style={{
-            width: '100%', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer',
-            fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, color: '#ffffff',
-            background: alerta.tipo === 'exito' ? 'linear-gradient(135deg, #22c55e, #16a34a)' :
-                        alerta.tipo === 'advertencia' ? 'linear-gradient(135deg, #f59e0b, #d97706)' :
-                        'linear-gradient(135deg, #ef4444, #dc2626)',
-            boxShadow: alerta.tipo === 'exito' ? '0 4px 15px rgba(34,197,94,0.3)' :
-                       alerta.tipo === 'advertencia' ? '0 4px 15px rgba(245,158,11,0.3)' :
-                       '0 4px 15px rgba(239,68,68,0.3)',
-            transition: 'all 0.2s'
-          }}
+          onClick={() => { alerta?.onClose ? alerta.onClose() : onClose(); }}
+          style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, color: '#ffffff', background: alerta.tipo === 'exito' ? 'linear-gradient(135deg, #22c55e, #16a34a)' : alerta.tipo === 'advertencia' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: alerta.tipo === 'exito' ? '0 4px 15px rgba(34,197,94,0.3)' : alerta.tipo === 'advertencia' ? '0 4px 15px rgba(245,158,11,0.3)' : '0 4px 15px rgba(239,68,68,0.3)', transition: 'all 0.2s' }}
         >
           Entendido
         </button>
@@ -1279,6 +1126,7 @@ function ModalAlerta({ alerta, onClose }: { alerta: any, onClose: () => void }) 
     </div>
   );
 }
+
 function TarjetaProducto({ producto, carrito, onActualizar }: { producto: ProductoStock, carrito: ItemCarrito[], onActualizar: (prod: ProductoStock, cambio: number) => void }) {
   const tieneStock = producto.stock > 0;
   const itemEnCarrito = carrito.find(item => item.material_id === producto.material_id);
