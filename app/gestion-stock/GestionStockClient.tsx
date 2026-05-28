@@ -56,13 +56,16 @@ export default function GestionStockClient() {
       const data = XLSX.utils.sheet_to_json(ws);
 
       const stockProcesado = data.map((row: any) => ({
-        material_id: String(row.material_id || row['Material ID'] || row['ID'] || ''),
-        descripcion: String(row.descripcion || row['Descripción'] || row['Producto'] || ''),
-        stock: Number(row.stock || row['Stock'] || row['Cantidad'] || 0),
-        precio_unitario: Number(row.precio_unitario || row['Precio'] || row['Precio Unitario'] || 0),
-        marca: row.marca || row['Marca'] || row['Grupo'] || null,
-        region: String(row.region || row['Región'] || row['Region'] || 'Lima'),
-      })).filter(p => p.material_id && p.descripcion);
+  material_id: String(row.material_id || row['Material ID'] || row['ID'] || ''),
+  descripcion: String(row.descripcion || row['Descripción'] || row['Producto'] || ''),
+  categoria: row.categoria || row['Categoria'] || row['Categoría'] || null,
+  stock: Number(row.stock || row['Stock'] || row['Cantidad'] || 0),
+  precio_unitario: Number(row.precio_unitario || row['Precio'] || row['Precio Unitario'] || 0),
+  grupo: row.grupo || row['Grupo'] || null,
+  marca: row.marca || row['Marca'] || null,
+  region: String(row.region || row['Región'] || row['Region'] || 'Lima'),
+  agencia: row.agencia || row['Agencia'] || null,
+})).filter(p => p.material_id && p.descripcion);
 
       setDatosExcel(stockProcesado);
     };
