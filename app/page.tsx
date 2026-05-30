@@ -126,20 +126,57 @@ export default function Home() {
     setModalAgencia(true);
   };
 
+  // Helper: detecta si un producto es de la marca Diageo usando marca Y grupo como respaldo
+  const esDiageoProducto = (prod: ProductoStock | undefined): boolean => {
+    if (!prod) return false;
+    return (prod.marca || '').toUpperCase().trim() === 'DIAGEO' ||
+           (prod.grupo || '').toUpperCase().trim() === 'DIAGEO';
+  };
+
   const actualizarCantidad = (producto: ProductoStock, cambio: number) => {
     setCarrito((carritoActual) => {
       const itemExistente = carritoActual.find(item => item.material_id === producto.material_id);
       
       if (cambio > 0) {
-        const cantidadActualEsteProducto = itemExistente?.cantidad || 0;
-        if (cantidadActualEsteProducto + cambio > 4) {
-          setTimeout(() => mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto.", "advertencia"), 0);
-          return carritoActual;
-        }
-        const totalUnidadesActuales = carritoActual.reduce((suma, item) => suma + item.cantidad, 0);
-        if (totalUnidadesActuales + cambio > 4) {
-          setTimeout(() => mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia"), 0);
-          return carritoActual;
+        // Usamos 'grupo' (no 'categoria') porque algunos licores tienen categoria='Bebidas' en BD
+        // Diageo tiene grupo='Diageo' → nunca coincide con 'Licores' → excluido automáticamente
+        const grupoProd = producto.grupo || '';
+        const esBebida = grupoProd === 'Bebidas';
+        const esAlcohol = grupoProd === 'Licores';
+
+        if (esBebida || esAlcohol) {
+          const cantidadActualEsteProducto = itemExistente?.cantidad || 0;
+          if (cantidadActualEsteProducto + cambio > 4) {
+            setTimeout(() => mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto de Bebidas o Alcohol.", "advertencia"), 0);
+            return carritoActual;
+          }
+
+          if (esBebida) {
+            const totalBebidasActuales = carritoActual.reduce((suma, item) => {
+              const pStock = stockReal.find(p => p.material_id === item.material_id);
+              if (pStock && pStock.grupo === 'Bebidas') {
+                return suma + item.cantidad;
+              }
+              return suma;
+            }, 0);
+            if (totalBebidasActuales + cambio > 4) {
+              setTimeout(() => mostrarAlerta("Límite de Bebidas alcanzado 🥤", "Solo puedes pedir un máximo de 4 paquetes/productos de Bebidas en total por pedido.", "advertencia"), 0);
+              return carritoActual;
+            }
+          } else if (esAlcohol) {
+            const totalAlcoholesActuales = carritoActual.reduce((suma, item) => {
+              const pStock = stockReal.find(p => p.material_id === item.material_id);
+              // grupo='Licores' excluye Diageo (grupo='Diageo') automáticamente
+              if (pStock && pStock.grupo === 'Licores') {
+                return suma + item.cantidad;
+              }
+              return suma;
+            }, 0);
+            if (totalAlcoholesActuales + cambio > 4) {
+              setTimeout(() => mostrarAlerta("Límite de Alcohol alcanzado 🥃", "Solo puedes pedir un máximo de 4 paquetes/productos de Licores en total por pedido.", "advertencia"), 0);
+              return carritoActual;
+            }
+          }
         }
       }
 
@@ -188,16 +225,37 @@ export default function Home() {
       return;
     }
 
-    const totalUnidades = carrito.reduce((suma, item) => suma + item.cantidad, 0);
-    if (totalUnidades > 4) {
-      mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia");
+    let totalBebidas = 0;
+    let totalAlcoholes = 0;
+
+    for (const item of carrito) {
+      const prodStock = stockReal.find(p => p.material_id === item.material_id);
+      if (prodStock) {
+        const grupo = prodStock.grupo || '';
+        const esB = grupo === 'Bebidas';
+        const esA = grupo === 'Licores'; // Diageo tiene grupo='Diageo', excluido automáticamente
+
+        if (esB) {
+          totalBebidas += item.cantidad;
+        } else if (esA) {
+          totalAlcoholes += item.cantidad;
+        }
+
+        if ((esB || esA) && item.cantidad > 4) {
+          mostrarAlerta("Límite por producto 📦", `Solo puedes pedir un máximo de 4 unidades del mismo producto de Bebidas o Licores: ${item.descripcion}.`, "advertencia");
+          return;
+        }
+      }
+    }
+
+    if (totalBebidas > 4) {
+      mostrarAlerta("Límite de Bebidas alcanzado 🥤", "Solo puedes pedir un máximo de 4 paquetes/productos de Bebidas en total por pedido.", "advertencia");
       return;
     }
-    for (const item of carrito) {
-      if (item.cantidad > 4) {
-        mostrarAlerta("Límite por producto 📦", `Solo puedes pedir un máximo de 4 unidades del mismo producto: ${item.descripcion}.`, "advertencia");
-        return;
-      }
+
+    if (totalAlcoholes > 4) {
+      mostrarAlerta("Límite de Licores alcanzado 🥃", "Solo puedes pedir un máximo de 4 paquetes/productos de Licores en total por pedido.", "advertencia");
+      return;
     }
 
     setGuardando(true);
@@ -206,10 +264,15 @@ export default function Home() {
     try {
       for (const item of carrito) {
         const productoEnStock = stockReal.find(p => p.material_id === item.material_id);
-        if (productoEnStock?.categoria === 'Bebidas') {
+        const grupo = productoEnStock?.grupo || '';
+        const esB = grupo === 'Bebidas';
+        const esA = grupo === 'Licores';
+
+        if (esB || esA) {
           const verificacion = await verificarLimiteBebidas(datosVenta.codigoEmpleado, item.material_id, item.cantidad);
           if (!verificacion.permitido) {
-            mostrarAlerta("Límite de Bebidas 🥤", `${item.descripcion}\n\n${verificacion.mensaje}`, "advertencia");
+            const tituloAlerta = grupo === 'Bebidas' ? "Límite de Bebidas 🥤" : "Límite de Licores 🥃";
+            mostrarAlerta(tituloAlerta, `${item.descripcion}\n\n${verificacion.mensaje}`, "advertencia");
             setGuardando(false);
             return;
           }
@@ -324,14 +387,46 @@ export default function Home() {
       if (nuevaCantidad <= 0) return prev;
 
       if (cambio > 0) {
-        if (nuevaCantidad > 4) {
-          setTimeout(() => mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto.", "advertencia"), 0);
-          return prev;
-        }
-        const totalUnidadesNueva = Object.entries(prev).reduce((suma, [mId, cant]) => suma + (mId === materialId ? nuevaCantidad : cant), 0);
-        if (totalUnidadesNueva > 4) {
-          setTimeout(() => mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia"), 0);
-          return prev;
+        const obtenerGrupoDeItem = (mId: string): string => {
+          const prodStock = stockReal.find(p => p.material_id === mId);
+          return prodStock?.grupo || '';
+        };
+
+        const grupoItem = obtenerGrupoDeItem(materialId);
+        const esBebida = grupoItem === 'Bebidas';
+        const esAlcohol = grupoItem === 'Licores'; // Diageo tiene grupo='Diageo', excluido automáticamente
+
+        if (esBebida || esAlcohol) {
+          if (nuevaCantidad > 4) {
+            setTimeout(() => mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto de Bebidas o Licores.", "advertencia"), 0);
+            return prev;
+          }
+
+          if (esBebida) {
+            const totalBebidasNueva = Object.entries(prev).reduce((suma, [mId, cant]) => {
+              const q = mId === materialId ? nuevaCantidad : cant;
+              if (obtenerGrupoDeItem(mId) === 'Bebidas') {
+                return suma + q;
+              }
+              return suma;
+            }, 0);
+            if (totalBebidasNueva > 4) {
+              setTimeout(() => mostrarAlerta("Límite de Bebidas alcanzado 🥤", "Solo puedes pedir un máximo de 4 paquetes/productos de Bebidas en total por pedido.", "advertencia"), 0);
+              return prev;
+            }
+          } else if (esAlcohol) {
+            const totalAlcoholesNueva = Object.entries(prev).reduce((suma, [mId, cant]) => {
+              const q = mId === materialId ? nuevaCantidad : cant;
+              if (obtenerGrupoDeItem(mId) === 'Licores') {
+                return suma + q;
+              }
+              return suma;
+            }, 0);
+            if (totalAlcoholesNueva > 4) {
+              setTimeout(() => mostrarAlerta("Límite de Licores alcanzado 🥃", "Solo puedes pedir un máximo de 4 paquetes/productos de Licores en total por pedido.", "advertencia"), 0);
+              return prev;
+            }
+          }
         }
       }
 
@@ -373,17 +468,41 @@ export default function Home() {
       }));
 
       const totalUnidadesModificado = itemsToUpdate.reduce((suma, item) => suma + item.cantidad_nueva, 0);
-      if (totalUnidadesModificado > 4) {
-        mostrarAlerta("Límite del pedido alcanzado 🛒", "Solo puedes pedir un máximo de 4 paquetes/productos en total por pedido.", "advertencia");
-        setGuardando(false);
-        return;
-      }
+      let totalBebidasModificado = 0;
+      let totalAlcoholesModificado = 0;
+
+      const obtenerGrupoDeItemGuardar = (mId: string): string => {
+        return stockReal.find(p => p.material_id === mId)?.grupo || '';
+      };
+
       for (const item of itemsToUpdate) {
-        if (item.cantidad_nueva > 4) {
-          mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto.", "advertencia");
+        const grupo = obtenerGrupoDeItemGuardar(item.material_id);
+        const esBebida = grupo === 'Bebidas';
+        const esAlcohol = grupo === 'Licores';
+
+        if (esBebida) {
+          totalBebidasModificado += item.cantidad_nueva;
+        } else if (esAlcohol) {
+          totalAlcoholesModificado += item.cantidad_nueva;
+        }
+
+        if ((esBebida || esAlcohol) && item.cantidad_nueva > 4) {
+          mostrarAlerta("Límite por producto 📦", "Solo puedes agregar un máximo de 4 unidades del mismo producto de Bebidas o Licores.", "advertencia");
           setGuardando(false);
           return;
         }
+      }
+
+      if (totalBebidasModificado > 4) {
+        mostrarAlerta("Límite de Bebidas alcanzado 🥤", "Solo puedes pedir un máximo de 4 paquetes/productos de Bebidas en total por pedido.", "advertencia");
+        setGuardando(false);
+        return;
+      }
+
+      if (totalAlcoholesModificado > 4) {
+        mostrarAlerta("Límite de Alcohol alcanzado 🥃", "Solo puedes pedir un máximo de 4 paquetes/productos de Alcohol en total por pedido.", "advertencia");
+        setGuardando(false);
+        return;
       }
 
       const respuesta = await actualizarPedido({ pedidoId: idPedidoModificar, lugar: lugarModificado, comprobanteUrl: comprobanteUrlFinal, items: itemsToUpdate });
@@ -1005,15 +1124,38 @@ export default function Home() {
               disabled={!datosVenta.nombre || !datosVenta.codigoEmpleado}
               onClick={async () => {
                 const tieneBebidas = carrito.some(item =>
-                  stockReal.find(p => p.material_id === item.material_id)?.categoria === 'Bebidas'
+                  stockReal.find(p => p.material_id === item.material_id)?.grupo === 'Bebidas'
+                );
+                // grupo='Licores' excluye Diageo (grupo='Diageo') automáticamente
+                const tieneAlcohol = carrito.some(item =>
+                  stockReal.find(p => p.material_id === item.material_id)?.grupo === 'Licores'
                 );
 
                 if (tieneBebidas) {
-                  const verificacion = await verificarLimiteGlobalBebidas(datosVenta.codigoEmpleado);
+                  const verificacion = await verificarLimiteGlobalBebidas(datosVenta.codigoEmpleado, 'Bebidas');
                   if (!verificacion.permitido) {
                     setModalIdentificacion(false);
                     setAlerta({
                       titulo: "Límite de Bebidas Alcanzado 🥤",
+                      mensaje: verificacion.mensaje || '',
+                      tipo: 'advertencia',
+                      onClose: () => {
+                        setAlerta(null);
+                        setRegionSeleccionada(null);
+                        setPantalla('catalogo');
+                        setCarrito([]);
+                      }
+                    });
+                    return;
+                  }
+                }
+
+                if (tieneAlcohol) {
+                  const verificacion = await verificarLimiteGlobalBebidas(datosVenta.codigoEmpleado, 'Alcohol');
+                  if (!verificacion.permitido) {
+                    setModalIdentificacion(false);
+                    setAlerta({
+                      titulo: "Límite de Alcohol Alcanzado 🥃",
                       mensaje: verificacion.mensaje || '',
                       tipo: 'advertencia',
                       onClose: () => {

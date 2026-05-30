@@ -19,9 +19,7 @@ export interface ProductoStock {
 export interface Vendedor {
   codigo_empleado: string;
   nombre_completo: string;
-}
-
-export interface PedidoExistenteItem {
+}export interface PedidoExistenteItem {
   pedido_id: string;
   material_id: string;
   descripcion: string;
@@ -31,7 +29,10 @@ export interface PedidoExistenteItem {
   nombre_cliente: string;
   agencia: string;
   comprobante_url: string;
-  stock_actual: number; // <- Añade esta línea si no la tiene
+  stock_actual: number;
+  categoria?: string;
+  grupo?: string;
+  marca?: string;
 }
 
 export async function obtenerAgenciasPorRegion(region: string): Promise<string[]> {
@@ -102,7 +103,10 @@ export async function obtenerPedidoPorId(pedidoId: string): Promise<PedidoExiste
       rp.nombre_cliente,
       rp.comprobante_url,
       (rp.precio_total / rp.cantidad)::numeric as precio_unitario,
-      sd.stock as stock_actual
+      sd.stock as stock_actual,
+      sd.categoria,
+      sd.grupo,
+      sd.marca
     FROM registro_pedidos rp
     LEFT JOIN stock_disponible sd 
       ON rp.material_id = sd.material_id 
@@ -586,16 +590,37 @@ export async function verificarLimiteBebidas(
   cantidadSolicitada: number
 ): Promise<{ permitido: boolean; mensaje?: string; cantidadDisponible: number }> {
   try {
-    // Verificar si el producto es de categoría Bebidas
+    // Verificar si el producto es de categoría Bebidas o Alcohol/Licores
     const { rows: productoRows } = await sql<any>`
-      SELECT categoria FROM stock_disponible 
+      SELECT categoria, marca, grupo, descripcion FROM stock_disponible 
       WHERE material_id = ${materialId} 
       LIMIT 1;
     `;
 
-    if (productoRows.length === 0 || productoRows[0].categoria !== 'Bebidas') {
-      return { permitido: true, cantidadDisponible: 4 };
+    if (productoRows.length === 0) {
+      return { permitido: true, cantidadDisponible: 999999 };
     }
+
+    const categoria = productoRows[0].categoria;
+    const marca = productoRows[0].marca || '';
+    const grupo = productoRows[0].grupo || '';
+    const descripcion = productoRows[0].descripcion || '';
+    
+    // Usamos 'grupo' para clasificar (no 'categoria') igual que el frontend
+    const esBebida = grupo === 'Bebidas';
+    
+    const esDiageo = marca.toUpperCase().trim() === 'DIAGEO' || 
+                     grupo.toUpperCase().trim() === 'DIAGEO' || 
+                     descripcion.toUpperCase().includes('DIAGEO');
+
+    // Licores con grupo='Licores' excepto Diageo (que tiene grupo='Diageo')
+    const esAlcohol = grupo === 'Licores' && !esDiageo;
+
+    if (!esBebida && !esAlcohol) {
+      return { permitido: true, cantidadDisponible: 999999 };
+    }
+
+    const categoriaLimite = esBebida ? 'Bebidas' : 'Alcohol y Licores';
 
     // Buscar pedidos de ese SKU por ese empleado en los últimos 28 días
     const { rows: pedidosRows } = await sql<any>`
@@ -636,14 +661,14 @@ export async function verificarLimiteBebidas(
       return {
         permitido: false,
         cantidadDisponible,
-        mensaje: `Solo puedes pedir ${cantidadDisponible} unidade${cantidadDisponible !== 1 ? 's' : ''} más de este producto. El límite es 4 unidades cada 28 días para productos de Bebidas.`
+        mensaje: `Solo puedes pedir ${cantidadDisponible} unidade${cantidadDisponible !== 1 ? 's' : ''} más de este producto. El límite es 4 unidades cada 28 días para productos de ${categoriaLimite}.`
       };
     }
 
     return { permitido: true, cantidadDisponible };
 
   } catch (error) {
-    console.error("🔥 Error verificando límite de bebidas:", error);
+    console.error("🔥 Error verificando límite de producto:", error);
     return { permitido: true, cantidadDisponible: 4 };
   }
 }
@@ -674,25 +699,44 @@ export async function toggleEstadoCompras(nuevoEstado: boolean): Promise<{ exito
 }
 
 export async function verificarLimiteGlobalBebidas(
-  codigoEmpleado: string
+  codigoEmpleado: string,
+  tipo: 'Bebidas' | 'Alcohol'
 ): Promise<{ permitido: boolean; mensaje?: string }> {
   try {
-    const { rows } = await sql<any>`
-      SELECT SUM(rp.cantidad) as total
-      FROM registro_pedidos rp
-      JOIN stock_disponible sd ON rp.material_id = sd.material_id
-      WHERE rp.codigo_empleado = ${codigoEmpleado}
-        AND sd.categoria = 'Bebidas'
-        AND rp.estado != 'RECHAZADO'
-        AND rp.fecha >= (CURRENT_DATE - INTERVAL '28 days');
-    `;
+    const label = tipo === 'Bebidas' ? 'bebidas' : 'alcohol y licores';
+    let rows;
+
+    if (tipo === 'Bebidas') {
+      const result = await sql<any>`
+        SELECT SUM(rp.cantidad) as total
+        FROM registro_pedidos rp
+        JOIN stock_disponible sd ON rp.material_id = sd.material_id
+        WHERE rp.codigo_empleado = ${codigoEmpleado}
+          AND sd.grupo = 'Bebidas'
+          AND rp.estado != 'RECHAZADO'
+          AND rp.fecha >= (CURRENT_DATE - INTERVAL '28 days');
+      `;
+      rows = result.rows;
+    } else {
+      const result = await sql<any>`
+        SELECT SUM(rp.cantidad) as total
+        FROM registro_pedidos rp
+        JOIN stock_disponible sd ON rp.material_id = sd.material_id
+        WHERE rp.codigo_empleado = ${codigoEmpleado}
+          AND sd.grupo = 'Licores'
+          AND UPPER(sd.marca) != 'DIAGEO'
+          AND rp.estado != 'RECHAZADO'
+          AND rp.fecha >= (CURRENT_DATE - INTERVAL '28 days');
+      `;
+      rows = result.rows;
+    }
 
     const total = Number(rows[0]?.total || 0);
 
     if (total >= 4) {
       return {
         permitido: false,
-        mensaje: `Ya alcanzaste el límite de 4 paquetes de bebidas en los últimos 28 días. Podrás realizar un nuevo pedido de bebidas una vez transcurrido ese período.`
+        mensaje: `Ya alcanzaste el límite de 4 paquetes/unidades de ${label} en los últimos 28 días. Podrás realizar un nuevo pedido de ${label} una vez transcurrido ese período.`
       };
     }
 
