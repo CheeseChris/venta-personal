@@ -631,7 +631,7 @@ export async function verificarLimiteBebidas(
       WHERE rp.codigo_empleado = ${codigoEmpleado}
         AND rp.material_id = ${materialId}
         AND rp.estado != 'RECHAZADO'
-        AND rp.fecha >= (CURRENT_DATE - INTERVAL '15 days')
+        AND rp.fecha >= (CURRENT_DATE - INTERVAL '10 days')
       ORDER BY rp.fecha DESC;
     `;
 
@@ -645,7 +645,7 @@ export async function verificarLimiteBebidas(
       // Calcular cuándo podrá pedir de nuevo (28 días desde el pedido más antiguo en la ventana)
       const fechaMasAntigua = new Date(pedidosRows[pedidosRows.length - 1].fecha);
       const fechaProximoPedido = new Date(fechaMasAntigua);
-      fechaProximoPedido.setDate(fechaProximoPedido.getDate() + 15);
+      fechaProximoPedido.setDate(fechaProximoPedido.getDate() + 10);
       const fechaFormateada = fechaProximoPedido.toLocaleDateString('es-PE', {
         day: '2-digit', month: 'long', year: 'numeric'
       });
@@ -653,7 +653,7 @@ export async function verificarLimiteBebidas(
       return {
         permitido: false,
         cantidadDisponible: 0,
-        mensaje: `Ya realizaste un pedido de 4 unidades de este producto en los últimos 28 días. Podrás volver a pedirlo a partir del ${fechaFormateada}.`
+        mensaje: `Ya realizaste un pedido de 4 unidades de este producto en los últimos 10 días. Podrás volver a pedirlo a partir del ${fechaFormateada}.`
       };
     }
 
@@ -661,7 +661,7 @@ export async function verificarLimiteBebidas(
       return {
         permitido: false,
         cantidadDisponible,
-        mensaje: `Solo puedes pedir ${cantidadDisponible} unidade${cantidadDisponible !== 1 ? 's' : ''} más de este producto. El límite es 4 unidades cada 28 días para productos de ${categoriaLimite}.`
+        mensaje: `Solo puedes pedir ${cantidadDisponible} unidade${cantidadDisponible !== 1 ? 's' : ''} más de este producto. El límite es 4 unidades cada 10 días para productos de ${categoriaLimite}.`
       };
     }
 
@@ -714,7 +714,7 @@ export async function verificarLimiteGlobalBebidas(
         WHERE rp.codigo_empleado = ${codigoEmpleado}
           AND sd.grupo = 'Bebidas'
           AND rp.estado != 'RECHAZADO'
-          AND rp.fecha >= (CURRENT_DATE - INTERVAL '28 days');
+          AND rp.fecha >= (CURRENT_DATE - INTERVAL '10 days');
       `;
       rows = result.rows;
     } else {
@@ -726,7 +726,7 @@ export async function verificarLimiteGlobalBebidas(
           AND sd.grupo = 'Licores'
           AND UPPER(sd.marca) != 'DIAGEO'
           AND rp.estado != 'RECHAZADO'
-          AND rp.fecha >= (CURRENT_DATE - INTERVAL '28 days');
+          AND rp.fecha >= (CURRENT_DATE - INTERVAL '10 days');
       `;
       rows = result.rows;
     }
