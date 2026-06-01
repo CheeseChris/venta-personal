@@ -631,7 +631,7 @@ export async function verificarLimiteBebidas(
       WHERE rp.codigo_empleado = ${codigoEmpleado}
         AND rp.material_id = ${materialId}
         AND rp.estado != 'RECHAZADO'
-        AND rp.fecha >= (CURRENT_DATE - INTERVAL '28 days')
+        AND rp.fecha >= (CURRENT_DATE - INTERVAL '15 days')
       ORDER BY rp.fecha DESC;
     `;
 
@@ -645,7 +645,7 @@ export async function verificarLimiteBebidas(
       // Calcular cuándo podrá pedir de nuevo (28 días desde el pedido más antiguo en la ventana)
       const fechaMasAntigua = new Date(pedidosRows[pedidosRows.length - 1].fecha);
       const fechaProximoPedido = new Date(fechaMasAntigua);
-      fechaProximoPedido.setDate(fechaProximoPedido.getDate() + 28);
+      fechaProximoPedido.setDate(fechaProximoPedido.getDate() + 15);
       const fechaFormateada = fechaProximoPedido.toLocaleDateString('es-PE', {
         day: '2-digit', month: 'long', year: 'numeric'
       });
