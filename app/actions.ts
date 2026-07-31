@@ -472,14 +472,48 @@ export async function actualizarEstadoPedido(pedidoId: string, nuevoEstado: stri
 
 export async function reemplazarStockMasivo(datos: ProductoStock[]) {
   try {
-    // 1. Limpiamos la tabla
-    await sql`TRUNCATE TABLE stock_disponible;`;
+    const nuevosMaterialIds = datos.map(item => item.material_id);
+    
+    if (nuevosMaterialIds.length > 0) {
+      const idsParam = `{${nuevosMaterialIds.join(',')}}`;
+      
+      // 1. Poner el stock de los productos que ya no vienen en el Excel a 0
+      await sql`
+        UPDATE stock_disponible 
+        SET stock = 0 
+        WHERE NOT (material_id = ANY(${idsParam}::text[]));
+      `;
+      
+      // 2. Eliminar físicamente únicamente los productos obsoletos que NUNCA han sido referenciados en pedidos
+      await sql`
+        DELETE FROM stock_disponible
+        WHERE NOT (material_id = ANY(${idsParam}::text[]))
+          AND material_id NOT IN (SELECT DISTINCT material_id FROM registro_pedidos WHERE material_id IS NOT NULL);
+      `;
+    } else {
+      // Si el Excel viene vacío, ponemos stock 0 a lo que tiene pedidos y borramos lo que no tenga pedidos
+      await sql`UPDATE stock_disponible SET stock = 0;`;
+      await sql`
+        DELETE FROM stock_disponible
+        WHERE material_id NOT IN (SELECT DISTINCT material_id FROM registro_pedidos WHERE material_id IS NOT NULL);
+      `;
+    }
 
-    // 2. Insertamos los nuevos
+    // 3. Insertamos o actualizamos los productos del Excel (UPSERT)
     for (const item of datos) {
       await sql`
         INSERT INTO stock_disponible (material_id, descripcion, categoria, stock, precio_unitario, grupo, marca, region, agencia)
-        VALUES (${item.material_id}, ${item.descripcion}, ${item.categoria}, ${item.stock}, ${item.precio_unitario}, ${item.grupo}, ${item.marca}, ${item.region}, ${item.agencia});
+        VALUES (${item.material_id}, ${item.descripcion}, ${item.categoria}, ${item.stock}, ${item.precio_unitario}, ${item.grupo}, ${item.marca}, ${item.region}, ${item.agencia})
+        ON CONFLICT (material_id) 
+        DO UPDATE SET 
+          descripcion = EXCLUDED.descripcion,
+          categoria = EXCLUDED.categoria,
+          stock = EXCLUDED.stock,
+          precio_unitario = EXCLUDED.precio_unitario,
+          grupo = EXCLUDED.grupo,
+          marca = EXCLUDED.marca,
+          region = EXCLUDED.region,
+          agencia = EXCLUDED.agencia;
       `;
     }
     return { exito: true };
@@ -515,12 +549,32 @@ export async function agregarStockMasivo(datos: ProductoStock[]) {
 
 export async function reemplazarPersonalMasivo(datos: Vendedor[]) {
   try {
-    await sql`TRUNCATE TABLE vendedores;`;
+    const nuevosCodigos = datos.map(item => item.codigo_empleado);
+    
+    if (nuevosCodigos.length > 0) {
+      const codigosParam = `{${nuevosCodigos.join(',')}}`;
+      
+      // 1. Eliminar físicamente a los empleados que no están en el Excel y que no tienen ningún pedido registrado
+      await sql`
+        DELETE FROM vendedores
+        WHERE NOT (codigo_empleado = ANY(${codigosParam}::text[]))
+          AND codigo_empleado NOT IN (SELECT DISTINCT codigo_empleado FROM registro_pedidos WHERE codigo_empleado IS NOT NULL);
+      `;
+    } else {
+      // Si el Excel viene vacío, borramos todos los que no tengan pedidos
+      await sql`
+        DELETE FROM vendedores
+        WHERE codigo_empleado NOT IN (SELECT DISTINCT codigo_empleado FROM registro_pedidos WHERE codigo_empleado IS NOT NULL);
+      `;
+    }
 
+    // 2. Insertar o actualizar (UPSERT)
     for (const item of datos) {
       await sql`
         INSERT INTO vendedores (codigo_empleado, nombre_completo)
-        VALUES (${item.codigo_empleado}, ${item.nombre_completo});
+        VALUES (${item.codigo_empleado}, ${item.nombre_completo})
+        ON CONFLICT (codigo_empleado)
+        DO UPDATE SET nombre_completo = EXCLUDED.nombre_completo;
       `;
     }
     return { exito: true };
