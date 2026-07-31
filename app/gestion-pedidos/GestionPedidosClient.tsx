@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { PedidoCompleto, actualizarEstadoPedido, toggleEstadoCompras } from '../actions';
+import { PedidoCompleto, actualizarEstadoPedido, toggleEstadoCompras, actualizarLimitesConfig } from '../actions';
 
 interface PedidoAgrupado {
   pedido_id_base: string;
@@ -17,10 +17,25 @@ interface PedidoAgrupado {
   items: PedidoCompleto[];
 }
 
-export default function GestionPedidosClient({ pedidosIniciales, comprasHabilitadasInicial }: { pedidosIniciales: PedidoCompleto[], comprasHabilitadasInicial: boolean }) {  // ← modificado
+export default function GestionPedidosClient({
+  pedidosIniciales,
+  comprasHabilitadasInicial,
+  limiteBebidasInicial,
+  limiteAlcoholInicial
+}: {
+  pedidosIniciales: PedidoCompleto[],
+  comprasHabilitadasInicial: boolean,
+  limiteBebidasInicial: number,
+  limiteAlcoholInicial: number
+}) {
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>(pedidosIniciales);
-  const [comprasHabilitadas, setComprasHabilitadas] = useState(comprasHabilitadasInicial);  // ← nueva línea
-  const [toggling, setToggling] = useState(false);  // ← nueva línea
+  const [comprasHabilitadas, setComprasHabilitadas] = useState(comprasHabilitadasInicial);
+  const [limiteBebidas, setLimiteBebidas] = useState(limiteBebidasInicial);
+  const [limiteAlcohol, setLimiteAlcohol] = useState(limiteAlcoholInicial);
+  const [toggling, setToggling] = useState(false);
+  const [guardandoLimites, setGuardandoLimites] = useState(false);
+  const [errorLimites, setErrorLimites] = useState<string | null>(null);
+  const [exitoLimites, setExitoLimites] = useState(false);
   const [procesando, setProcesando] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
@@ -105,6 +120,25 @@ export default function GestionPedidosClient({ pedidosIniciales, comprasHabilita
     setToggling(false);
   };
 
+  const handleGuardarLimites = async () => {
+    setGuardandoLimites(true);
+    setErrorLimites(null);
+    setExitoLimites(false);
+    try {
+      const result = await actualizarLimitesConfig(limiteBebidas, limiteAlcohol);
+      if (result.exito) {
+        setExitoLimites(true);
+        setTimeout(() => setExitoLimites(false), 3000);
+      } else {
+        setErrorLimites('Error al guardar los límites en la base de datos.');
+      }
+    } catch (err) {
+      setErrorLimites('Error de conexión con el servidor.');
+    } finally {
+      setGuardandoLimites(false);
+    }
+  };
+
   const descargarExcel = () => {
     // Para el Excel sí exportamos fila por fila para facilitar tablas dinámicas
     const dataExcel = pedidos.map(p => ({
@@ -135,43 +169,98 @@ export default function GestionPedidosClient({ pedidosIniciales, comprasHabilita
     <div className="space-y-6">
       {/* Buscador y Exportar */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
-  <div className="relative w-full sm:w-96">
-    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-    </div>
-    <input
-      type="text"
-      placeholder="Buscar por código, cliente, vendedor, agencia..."
-      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
-      value={search}
-      onChange={(e) => setSearch(e.target.value)}
-    />
-  </div>
+        <div className="relative w-full sm:w-96">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </div>
+          <input
+            type="text"
+            placeholder="Buscar por código, cliente, vendedor, agencia..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
 
-  <div className="flex gap-3 w-full sm:w-auto">
-    {/* BOTÓN TOGGLE COMPRAS */}
-    <button
-      onClick={handleToggleCompras}
-      disabled={toggling}
-      className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all shadow-sm border-2 ${
-        comprasHabilitadas
-          ? 'bg-green-50 border-green-500 text-green-700 hover:bg-green-100'
-          : 'bg-red-50 border-red-500 text-red-700 hover:bg-red-100'
-      } ${toggling ? 'opacity-60 cursor-not-allowed' : ''}`}
-    >
-      <div className={`w-3 h-3 rounded-full ${comprasHabilitadas ? 'bg-green-500' : 'bg-red-500'}`} />
-      {toggling ? 'Cambiando...' : comprasHabilitadas ? '🟢 Compras Habilitadas' : '🔴 Compras Bloqueadas'}
-    </button>
+        <div className="flex gap-3 w-full sm:w-auto">
+          {/* BOTÓN TOGGLE COMPRAS */}
+          <button
+            onClick={handleToggleCompras}
+            disabled={toggling}
+            className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all shadow-sm border-2 ${comprasHabilitadas
+                ? 'bg-green-50 border-green-500 text-green-700 hover:bg-green-100'
+                : 'bg-red-50 border-red-500 text-red-700 hover:bg-red-100'
+              } ${toggling ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            <div className={`w-3 h-3 rounded-full ${comprasHabilitadas ? 'bg-green-500' : 'bg-red-500'}`} />
+            {toggling ? 'Cambiando...' : comprasHabilitadas ? '🟢 Compras Habilitadas' : '🔴 Compras Bloqueadas'}
+          </button>
 
-    <button
-      onClick={descargarExcel}
-      className="flex-1 sm:flex-none flex justify-center items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm"
-    >
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-      Descargar Excel
-    </button>
-  </div>
-</div>
+          <button
+            onClick={descargarExcel}
+            className="flex-1 sm:flex-none flex justify-center items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            Descargar Excel
+          </button>
+        </div>
+      </div>
+
+      {/* Configuración de Límites (Gente y Gestión) */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Configuración de Límites de Compra
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 items-end">
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-gray-700">Límite para Bebidas (paquetes)</label>
+            <input
+              type="number"
+              min="1"
+              max="999"
+              className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
+              value={limiteBebidas}
+              onChange={(e) => setLimiteBebidas(Math.max(1, parseInt(e.target.value) || 0))}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-gray-700">Límite para Alcohol / Licores (unidades)</label>
+            <input
+              type="number"
+              min="1"
+              max="999"
+              className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
+              value={limiteAlcohol}
+              onChange={(e) => setLimiteAlcohol(Math.max(1, parseInt(e.target.value) || 0))}
+            />
+          </div>
+          <div>
+            <button
+              onClick={handleGuardarLimites}
+              disabled={guardandoLimites}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-bold py-2 px-6 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {guardandoLimites ? 'Guardando...' : '💾 Guardar Límites'}
+            </button>
+          </div>
+        </div>
+
+        {exitoLimites && (
+          <div className="mt-4 text-sm font-bold text-green-600 bg-green-50 border border-green-200 p-2 rounded-xl text-center">
+            ¡Límites guardados correctamente en la base de datos!
+          </div>
+        )}
+        {errorLimites && (
+          <div className="mt-4 text-sm font-bold text-red-600 bg-red-50 border border-red-200 p-2 rounded-xl text-center">
+            ❌ {errorLimites}
+          </div>
+        )}
+      </div>
 
       {/* Tabla Agrupada */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -239,8 +328,8 @@ export default function GestionPedidosClient({ pedidosIniciales, comprasHabilita
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className={`inline-flex px-3 py-1 rounded-full text-xs font-black tracking-wide ${grupo.estado === 'APROBADO' ? 'bg-green-100 text-green-800' :
-                          grupo.estado === 'RECHAZADO' ? 'bg-red-100 text-red-800' :
-                            'bg-orange-100 text-orange-800'
+                        grupo.estado === 'RECHAZADO' ? 'bg-red-100 text-red-800' :
+                          'bg-orange-100 text-orange-800'
                         }`}>
                         {grupo.estado}
                       </span>
@@ -252,8 +341,8 @@ export default function GestionPedidosClient({ pedidosIniciales, comprasHabilita
                           disabled={isProcesando || grupo.estado === 'APROBADO'}
                           title="Aprobar todo el pedido"
                           className={`p-2 rounded-xl transition-all shadow-sm ${grupo.estado === 'APROBADO'
-                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
-                              : 'bg-green-50 text-green-600 hover:bg-green-500 hover:text-white hover:scale-105'
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
+                            : 'bg-green-50 text-green-600 hover:bg-green-500 hover:text-white hover:scale-105'
                             }`}
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
@@ -263,8 +352,8 @@ export default function GestionPedidosClient({ pedidosIniciales, comprasHabilita
                           disabled={isProcesando || grupo.estado === 'RECHAZADO'}
                           title="Rechazar todo el pedido"
                           className={`p-2 rounded-xl transition-all shadow-sm ${grupo.estado === 'RECHAZADO'
-                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
-                              : 'bg-red-50 text-red-600 hover:bg-red-500 hover:text-white hover:scale-105'
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
+                            : 'bg-red-50 text-red-600 hover:bg-red-500 hover:text-white hover:scale-105'
                             }`}
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>

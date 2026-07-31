@@ -589,6 +589,8 @@ export async function verificarLimiteBebidas(
   materialId: string,
   cantidadSolicitada: number
 ): Promise<{ permitido: boolean; mensaje?: string; cantidadDisponible: number }> {
+  let esBebida = false;
+  let limiteCategorizado = 4;
   try {
     // Verificar si el producto es de categoría Bebidas o Alcohol/Licores
     const { rows: productoRows } = await sql<any>`
@@ -607,14 +609,18 @@ export async function verificarLimiteBebidas(
     const descripcion = productoRows[0].descripcion || '';
     
     // Usamos 'grupo' para clasificar (no 'categoria') igual que el frontend
-    const esBebida = grupo === 'Bebidas';
+    esBebida = grupo === 'Bebidas';
+    
+    // Obtener límites configurados dinámicamente de la base de datos
+    const limites = await obtenerLimitesConfig();
+    limiteCategorizado = esBebida ? limites.limiteBebidas : limites.limiteAlcohol;
     
     const esDiageo = marca.toUpperCase().trim() === 'DIAGEO' || 
                      grupo.toUpperCase().trim() === 'DIAGEO' || 
                      descripcion.toUpperCase().includes('DIAGEO');
 
-    // Licores con grupo='Licores' excepto Diageo (que tiene grupo='Diageo')
-    const esAlcohol = grupo === 'Licores' && !esDiageo;
+    // Licores con grupo='Licores' o 'Alcohol' excepto Diageo (que tiene grupo='Diageo')
+    const esAlcohol = (grupo === 'Licores' || grupo === 'Alcohol') && !esDiageo;
 
     if (!esBebida && !esAlcohol) {
       return { permitido: true, cantidadDisponible: 999999 };
@@ -639,9 +645,9 @@ export async function verificarLimiteBebidas(
       (suma: number, row: any) => suma + Number(row.cantidad), 0
     );
 
-    const cantidadDisponible = Math.max(0, 4 - totalPedidoEnVentana);
+    const cantidadDisponible = Math.max(0, limiteCategorizado - totalPedidoEnVentana);
 
-    if (totalPedidoEnVentana >= 4) {
+    if (totalPedidoEnVentana >= limiteCategorizado) {
       // Calcular cuándo podrá pedir de nuevo (28 días desde el pedido más antiguo en la ventana)
       const fechaMasAntigua = new Date(pedidosRows[pedidosRows.length - 1].fecha);
       const fechaProximoPedido = new Date(fechaMasAntigua);
@@ -653,15 +659,15 @@ export async function verificarLimiteBebidas(
       return {
         permitido: false,
         cantidadDisponible: 0,
-        mensaje: `Ya realizaste un pedido de 4 unidades de este producto en los últimos 10 días. Podrás volver a pedirlo a partir del ${fechaFormateada}.`
+        mensaje: `Ya realizaste un pedido de ${limiteCategorizado} unidades de este producto en los últimos 10 días. Podrás volver a pedirlo a partir del ${fechaFormateada}.`
       };
     }
 
-    if (totalPedidoEnVentana + cantidadSolicitada > 4) {
+    if (totalPedidoEnVentana + cantidadSolicitada > limiteCategorizado) {
       return {
         permitido: false,
         cantidadDisponible,
-        mensaje: `Solo puedes pedir ${cantidadDisponible} unidade${cantidadDisponible !== 1 ? 's' : ''} más de este producto. El límite es 4 unidades cada 10 días para productos de ${categoriaLimite}.`
+        mensaje: `Solo puedes pedir ${cantidadDisponible} unidade${cantidadDisponible !== 1 ? 's' : ''} más de este producto. El límite es ${limiteCategorizado} unidades cada 10 días para productos de ${categoriaLimite}.`
       };
     }
 
@@ -669,7 +675,7 @@ export async function verificarLimiteBebidas(
 
   } catch (error) {
     console.error("🔥 Error verificando límite de producto:", error);
-    return { permitido: true, cantidadDisponible: 4 };
+    return { permitido: true, cantidadDisponible: limiteCategorizado };
   }
 }
 
@@ -698,12 +704,65 @@ export async function toggleEstadoCompras(nuevoEstado: boolean): Promise<{ exito
   }
 }
 
+export async function obtenerLimitesConfig(): Promise<{ limiteBebidas: number; limiteAlcohol: number }> {
+  try {
+    const { rows } = await sql<{ clave: string; valor: string }>`
+      SELECT clave, valor FROM configuracion_sistema WHERE clave IN ('limite_bebidas', 'limite_alcohol');
+    `;
+    
+    let limiteBebidas = 8;
+    let limiteAlcohol = 4;
+    
+    rows.forEach(row => {
+      if (row.clave === 'limite_bebidas') {
+        limiteBebidas = parseInt(row.valor, 10) || 8;
+      } else if (row.clave === 'limite_alcohol') {
+        limiteAlcohol = parseInt(row.valor, 10) || 4;
+      }
+    });
+    
+    return { limiteBebidas, limiteAlcohol };
+  } catch (error) {
+    console.error("🔥 Error obteniendo límites de configuración:", error);
+    return { limiteBebidas: 8, limiteAlcohol: 4 };
+  }
+}
+
+export async function actualizarLimitesConfig(limiteBebidas: number, limiteAlcohol: number): Promise<{ exito: boolean }> {
+  try {
+    const resultBebidas = await sql`
+      UPDATE configuracion_sistema SET valor = ${limiteBebidas.toString()} WHERE clave = 'limite_bebidas';
+    `;
+    if (resultBebidas.rowCount === 0) {
+      await sql`
+        INSERT INTO configuracion_sistema (clave, valor) VALUES ('limite_bebidas', ${limiteBebidas.toString()});
+      `;
+    }
+    
+    const resultAlcohol = await sql`
+      UPDATE configuracion_sistema SET valor = ${limiteAlcohol.toString()} WHERE clave = 'limite_alcohol';
+    `;
+    if (resultAlcohol.rowCount === 0) {
+      await sql`
+        INSERT INTO configuracion_sistema (clave, valor) VALUES ('limite_alcohol', ${limiteAlcohol.toString()});
+      `;
+    }
+    
+    return { exito: true };
+  } catch (error) {
+    console.error("🔥 Error actualizando límites de configuración:", error);
+    return { exito: false };
+  }
+}
+
 export async function verificarLimiteGlobalBebidas(
   codigoEmpleado: string,
   tipo: 'Bebidas' | 'Alcohol'
 ): Promise<{ permitido: boolean; mensaje?: string }> {
   try {
     const label = tipo === 'Bebidas' ? 'bebidas' : 'alcohol y licores';
+    const limites = await obtenerLimitesConfig();
+    const limiteGlobal = tipo === 'Bebidas' ? limites.limiteBebidas : limites.limiteAlcohol;
     let rows;
 
     if (tipo === 'Bebidas') {
@@ -723,7 +782,7 @@ export async function verificarLimiteGlobalBebidas(
         FROM registro_pedidos rp
         JOIN stock_disponible sd ON rp.material_id = sd.material_id
         WHERE rp.codigo_empleado = ${codigoEmpleado}
-          AND sd.grupo = 'Licores'
+          AND (sd.grupo = 'Licores' OR sd.grupo = 'Alcohol')
           AND UPPER(sd.marca) != 'DIAGEO'
           AND rp.estado != 'RECHAZADO'
           AND rp.fecha >= (CURRENT_DATE - INTERVAL '10 days');
@@ -733,10 +792,10 @@ export async function verificarLimiteGlobalBebidas(
 
     const total = Number(rows[0]?.total || 0);
 
-    if (total >= 4) {
+    if (total >= limiteGlobal) {
       return {
         permitido: false,
-        mensaje: `Ya alcanzaste el límite de 4 paquetes/unidades de ${label} en los últimos 28 días. Podrás realizar un nuevo pedido de ${label} una vez transcurrido ese período.`
+        mensaje: `Ya alcanzaste el límite de ${limiteGlobal} paquetes/unidades de ${label} en los últimos 10 días. Podrás realizar un nuevo pedido de ${label} una vez transcurrido ese período.`
       };
     }
 
